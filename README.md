@@ -23,18 +23,18 @@ mediapipe 測試 前端專案，基於 Vue 3 + Vite + TypeScript。本文件幫�
 
 ## 技術棧
 
-| 類別                | 技術                                                     |
-| ------------------- | -------------------------------------------------------- |
-| 框架                | Vue 3（`<script setup>` + TypeScript）                   |
-| 建置                | Vite 8                                                   |
-| 狀態管理            | Pinia                                                    |
-| 路由                | Vue Router                                               |
-| HTTP                | Axios + Result API（可選，預設啟用）                     |
-| 樣式                | Tailwind CSS（建立時可選，預設啟用）                     |
-| 多語系              | vue-i18n（建立時可選，預設啟用；`src/i18n/`）            |
-|  | 品質                                                     | ESLint、stylelint、Prettier |
-| Git                 | Husky + lint-staged + commitlint（Conventional Commits） |
-| AI 輔助             | Cursor `.cursor/rules/`、`.cursor/skills/`               |
+| 類別     | 技術                                                     |
+| -------- | -------------------------------------------------------- |
+| 框架     | Vue 3（`<script setup>` + TypeScript）                   |
+| 建置     | Vite 8                                                   |
+| 狀態管理 | Pinia                                                    |
+| 路由     | Vue Router                                               |
+| HTTP     | Axios + Result API（可選，預設啟用）                     |
+| 樣式     | Tailwind CSS（建立時可選，預設啟用）                     |
+| 多語系   | vue-i18n（建立時可選，預設啟用；`src/i18n/`）            |
+|          | 品質                                                     | ESLint、stylelint、Prettier |
+| Git      | Husky + lint-staged + commitlint（Conventional Commits） |
+| AI 輔助  | Cursor `.cursor/rules/`、`.cursor/skills/`               |
 
 ---
 
@@ -96,14 +96,14 @@ pnpm preview
 
 主要變數：
 
-| 變數                   | 說明                                                                               |
-| ---------------------- | ---------------------------------------------------------------------------------- |
-| `VITE_APP_TITLE`       | 瀏覽器標題                                                                         |
+| 變數                   | 說明                                                                    |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `VITE_APP_TITLE`       | 瀏覽器標題                                                              |
 | `VITE_APP_BASE_URL`    | Vite `base`（靜態資源子路徑；**預設 `/`**，子目錄部署才改。目前為 `/`） |
-| `VITE_APP_API_URL`     | 後端 API 根網址                                                                    |
-| `VITE_APP_FRONT_URL`   | 前端完整網址（API + base path）                                                    |
-| `VITE_APP_SHOW_LOG`    | 是否顯示 debug log                                                                 |
-| `VITE_APP_META_ROBOTS` | SEO robots meta                                                                    |
+| `VITE_APP_API_URL`     | 後端 API 根網址                                                         |
+| `VITE_APP_FRONT_URL`   | 前端完整網址（API + base path）                                         |
+| `VITE_APP_SHOW_LOG`    | 是否顯示 debug log                                                      |
+| `VITE_APP_META_ROBOTS` | SEO robots meta                                                         |
 
 程式碼中透過 `import.meta.env.VITE_*` 讀取。修改 `.env.*` 後需重啟 `pnpm dev`。
 
@@ -222,11 +222,11 @@ mediapipe-test/
 
 ### Skills（標準流程）
 
-| Skill               | 用途           |
-| ------------------- | -------------- |
-| `/commit`           | 檢查後分類提交 |
-| `/push`             | 檢查後安全推送 |
-| `/deploy`           | 部署與版號     |
+| Skill             | 用途           |
+| ----------------- | -------------- |
+| `/commit`         | 檢查後分類提交 |
+| `/push`           | 檢查後安全推送 |
+| `/deploy`         | 部署與版號     |
 | `/mediapipe-test` | 專案導覽       |
 
 詳見 [`docs/ai-assist.md`](docs/ai-assist.md)。

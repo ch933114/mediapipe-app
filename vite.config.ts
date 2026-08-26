@@ -44,6 +44,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: "0.0.0.0",
+      allowedHosts: ["arla-resurrective-untortiously.ngrok-free.dev"],
     },
     define: {
       "import.meta.env.VITE_APPLICATION_VERSION": JSON.stringify(

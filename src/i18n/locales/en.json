@@ -1,8 +1,194 @@
 {
   "common": {
-    "appTitle": "mediapipe 測試"
+    "appTitle": "MediaPipe Interaction Showcase"
   },
   "home": {
-    "lead": "Project scaffolded. Start building."
+    "eyebrow": "Live Camera Interaction",
+    "lead": "The page combines gesture effects, dance detection, and Eevee recognition. Every interaction runs in real time from the camera feed and prefers the rear camera when available.",
+    "tabs": {
+      "gesture": "Gesture Gem",
+      "dance": "Dance Bear",
+      "eevee": "Eevee Scan",
+      "smile": "Smile Devil Mask"
+    },
+    "panels": {
+      "gesture": {
+        "title": "Fist-triggered gem effect",
+        "description": "Hold a fist for 2 seconds, then open the palm to spawn a gem that follows the hand."
+      },
+      "dance": {
+        "title": "Dance motion detection",
+        "description": "When the person keeps moving with enough energy, dancing bears appear around them."
+      },
+      "eevee": {
+        "title": "Eevee recognition with 3D preview",
+        "description": "Point a similar object to `eevee.png` at the camera to reveal an auto-rotating Eevee model and a short Pokédex summary."
+      },
+      "smile": {
+        "title": "Smile-triggered devil mask",
+        "description": "When Face Mesh detects a smile, a devil mask appears and follows your face."
+      }
+    },
+    "steps": {
+      "gesture": {
+        "step1": {
+          "title": "1. Keep one hand in frame",
+          "description": "Place one hand clearly inside the camera view so the landmarks remain stable."
+        },
+        "step2": {
+          "title": "2. Charge with a fist",
+          "description": "Hold a fist for about 2 seconds until the progress bar fills up."
+        },
+        "step3": {
+          "title": "3. Open to trigger",
+          "description": "Open the hand to trigger the gem effect, then make a fist again to reset it."
+        }
+      },
+      "dance": {
+        "step1": {
+          "title": "1. Stay fully visible",
+          "description": "Try to keep the head, shoulders, hips, and feet inside the frame for steadier pose tracking."
+        },
+        "step2": {
+          "title": "2. Keep moving",
+          "description": "Continuous motion from the limbs and torso raises the dance score."
+        },
+        "step3": {
+          "title": "3. Bears join the dance",
+          "description": "Once dancing is detected, several dancing bears appear around the person."
+        }
+      },
+      "eevee": {
+        "step1": {
+          "title": "1. Use the rear camera",
+          "description": "The experience prefers the rear camera, which works better for printed cards, figures, and posters."
+        },
+        "step2": {
+          "title": "2. Center a similar image",
+          "description": "Place something visually close to `eevee.png` in the middle of the frame while the system compares it."
+        },
+        "step3": {
+          "title": "3. Reveal the model",
+          "description": "When similarity passes the threshold, the page shows `eevee.glb` and a short Eevee profile."
+        }
+      },
+      "smile": {
+        "step1": {
+          "title": "1. Keep your face in frame",
+          "description": "Use the rear camera and keep your face near the center of the view."
+        },
+        "step2": {
+          "title": "2. Smile at the camera",
+          "description": "Smile and hold it briefly while Face Mesh analyzes your facial landmarks."
+        },
+        "step3": {
+          "title": "3. Wear the devil mask",
+          "description": "The mask follows your face position and angle as you move."
+        }
+      }
+    }
+  },
+  "gesture": {
+    "loading": "Loading...",
+    "start": "Start Gesture Effect",
+    "stop": "Stop Gesture Effect",
+    "instructions": {
+      "hold": "Hold a fist for about 2 seconds to charge the effect.",
+      "reset": "After the gem appears, make a fist again to clear it and start over."
+    },
+    "state": {
+      "booting": "Starting camera...",
+      "idle": "Waiting for a hand",
+      "holdPrompt": "Hold a fist for 2 seconds",
+      "holding": "Holding fist {seconds} / 2.0 sec",
+      "ready": "Charged. Open the palm to trigger",
+      "showing": "Gem effect is following the hand",
+      "tracking": "Hand detected. Start the gesture",
+      "cameraPrompt": "Tap the button below to start the camera",
+      "cameraLoading": "Connecting camera and model...",
+      "cameraError": "Could not start camera: {message}",
+      "loadError": "Model failed to load. Please try again later."
+    }
+  },
+  "dance": {
+    "loading": "Loading...",
+    "start": "Start Dance Detection",
+    "stop": "Stop Dance Detection",
+    "popup": "Dancing detected. The bears joined the party!",
+    "instructions": {
+      "detect": "Keep your body in frame and move your limbs and torso with steady rhythm.",
+      "reset": "If motion slows down, the bears leave. Start dancing again to bring them back."
+    },
+    "state": {
+      "booting": "Starting camera...",
+      "idle": "Waiting for a person",
+      "tracking": "Person detected. Start dancing",
+      "searching": "Tracking body pose",
+      "energy": "Motion energy {score}",
+      "dancing": "Dance detected. Bears are on screen",
+      "cameraPrompt": "Tap the button below to start dance detection",
+      "cameraLoading": "Connecting camera and pose model...",
+      "cameraError": "Could not start camera: {message}",
+      "loadError": "Pose model failed to load. Please try again later."
+    }
+  },
+  "eevee": {
+    "loading": "Loading...",
+    "start": "Start Eevee Recognition",
+    "stop": "Stop Eevee Recognition",
+    "similarity": "Similarity",
+    "detectedBadge": "Eevee-like object found",
+    "modelLoading": "Loading the 3D Eevee model...",
+    "modelError": "The 3D viewer failed to load. Refresh after checking the network connection.",
+    "instructions": {
+      "detect": "Place an image, card, or figure similar to `eevee.png` near the middle of the frame.",
+      "camera": "The system asks for the rear camera first and only falls back if the device cannot provide it."
+    },
+    "state": {
+      "booting": "Starting camera...",
+      "idle": "Waiting for an Eevee-like object",
+      "tracking": "Rear camera ready. Scanning the frame",
+      "scanning": "Scanning. Current similarity {score}%",
+      "detected": "Similar object found at {score}%",
+      "cameraPrompt": "Tap the button below to start Eevee recognition",
+      "cameraLoading": "Connecting the rear camera and matcher...",
+      "cameraError": "Could not start camera: {message}",
+      "loadError": "The Eevee matcher failed to load. Please try again later."
+    },
+    "info": {
+      "dex": "National Pokédex #0133",
+      "name": "Eevee",
+      "description": "Eevee is a Normal-type Pokémon with unstable genetic makeup, which lets it evolve into many different forms when influenced by its surroundings.",
+      "typeLabel": "Type",
+      "typeValue": "Normal",
+      "heightLabel": "Height",
+      "heightValue": "0.3 m",
+      "weightLabel": "Weight",
+      "weightValue": "6.5 kg",
+      "featureLabel": "Trait",
+      "featureValue": "Many evolution paths"
+    }
+  },
+  "smile": {
+    "loading": "Loading...",
+    "start": "Start Smile Detection",
+    "stop": "Stop Smile Detection",
+    "score": "Smile score",
+    "instructions": {
+      "detect": "Smile at the rear camera and the devil mask appears when detected.",
+      "camera": "The rear camera is preferred, with fallback to another available camera."
+    },
+    "state": {
+      "booting": "Starting camera...",
+      "idle": "Waiting for a face",
+      "tracking": "Face detected. Smile at the camera",
+      "detected": "Smile detected. Devil mask enabled",
+      "maskOn": "Devil mask active",
+      "smilePrompt": "Smile at the camera",
+      "cameraPrompt": "Tap the button below to start the camera",
+      "cameraLoading": "Connecting the rear camera and face model...",
+      "cameraError": "Could not start camera: {message}",
+      "loadError": "Face model failed to load. Please try again later."
+    }
   }
 }

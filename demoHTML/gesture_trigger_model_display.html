@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>握拳張開 AR</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: #0a0a0f;
+        color: #e0e0e0;
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem;
+        gap: 12px;
+        min-height: 100vh;
+      }
+      h2 {
+        font-size: 15px;
+        color: #aaa;
+        letter-spacing: 0.05em;
+        margin-top: 4px;
+      }
+      #container {
+        position: relative;
+        width: 100%;
+        max-width: 580px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 0.5px solid #333;
+        background: #000;
+      }
+      #video {
+        width: 100%;
+        display: block;
+      }
+      #threeCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+      #overlay-msg {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.65);
+        color: #fff;
+        font-size: 14px;
+        text-align: center;
+        padding: 1rem;
+      }
+      /* 手勢提示 UI */
+      #gesture-hint {
+        position: absolute;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.55);
+        border-radius: 20px;
+        padding: 6px 14px;
+        pointer-events: none;
+      }
+      .hint-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #444;
+        transition: background 0.2s;
+      }
+      .hint-dot.active {
+        background: #1d9e75;
+      }
+      .hint-dot.ready {
+        background: #ff7700;
+      }
+      #hint-label {
+        font-size: 12px;
+        color: #ccc;
+        min-width: 80px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      button {
+        padding: 8px 20px;
+        font-size: 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        border: none;
+      }
+      #startBtn {
+        background: #1a6ef5;
+        color: #fff;
+      }
+      #startBtn:disabled {
+        background: #333;
+        color: #666;
+        cursor: default;
+      }
+      #stopBtn {
+        background: #2a2a2a;
+        color: #aaa;
+        border: 0.5px solid #444;
+      }
+      #stopBtn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #status {
+        font-size: 13px;
+        color: #888;
+      }
+      .info {
+        width: 100%;
+        max-width: 580px;
+        background: #161620;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 12px;
+        color: #777;
+        line-height: 1.8;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>握拳 → 張開 手勢 AR</h2>
+
+    <div id="container">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="threeCanvas"></canvas>
+      <div id="overlay-msg">點擊「開始」啟用相機</div>
+      <div id="gesture-hint" style="display: none">
+        <div class="hint-dot" id="dot-fist"></div>
+        <div class="hint-dot" id="dot-open"></div>
+        <span id="hint-label">等待手部</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">開始</button>
+      <button id="stopBtn" disabled>停止</button>
+      <span id="status">待機中</span>
+    </div>
+
+    <div class="info">
+      握緊拳頭（保持 0.5 秒）→ 再張開手掌 → 寶石爆現！<br />
+      模型顯示後再握拳可重置，重新觸發。
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"
+      crossorigin="anonymous"
+    ></script>
+
+    <script>
+      (function () {
+        const video = document.getElementById("video");
+        const threeCanvas = document.getElementById("threeCanvas");
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const statusEl = document.getElementById("status");
+        const overlayMsg = document.getElementById("overlay-msg");
+        const gestureHint = document.getElementById("gesture-hint");
+        const dotFist = document.getElementById("dot-fist");
+        const dotOpen = document.getElementById("dot-open");
+        const hintLabel = document.getElementById("hint-label");
+
+        let hands = null,
+          running = false,
+          rafId = null,
+          tick = 0;
+
+        // ── 狀態機 ─────────────────────────────────────────────────
+        // 每隻手獨立追蹤
+        const handState = [
+          { phase: "idle", fistSince: 0, showSince: 0, spawnTick: -999 },
+          { phase: "idle", fistSince: 0, showSince: 0, spawnTick: -999 },
+        ];
+        const FIST_HOLD_MS = 500; // 握緊需持續多久
+        const FIST_TIMEOUT_MS = 1500; // 等待張開的超時
+
+        // ── Three.js ───────────────────────────────────────────────
+        const renderer = new THREE.WebGLRenderer({
+          canvas: threeCanvas,
+          alpha: true,
+          antialias: true,
+        });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setClearColor(0x000000, 0);
+
+        const scene = new THREE.Scene();
+        const cam3d = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+        cam3d.position.z = 5;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+        const dir = new THREE.DirectionalLight(0xffffff, 1.4);
+        dir.position.set(1, 2, 3);
+        scene.add(dir);
+        const dir2 = new THREE.DirectionalLight(0xffddaa, 0.6);
+        dir2.position.set(-2, -1, 2);
+        scene.add(dir2);
+
+        // ── 爆現寶石模型 ───────────────────────────────────────────
+        function makeGemModel() {
+          const g = new THREE.Group();
+          const gem = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.09, 1),
+            new THREE.MeshPhongMaterial({
+              color: 0xff7700,
+              emissive: 0x331100,
+              shininess: 140,
+              transparent: true,
+              opacity: 0.93,
+            })
+          );
+          g.add(gem);
+          g.add(
+            new THREE.Mesh(
+              new THREE.OctahedronGeometry(0.095, 1),
+              new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.18,
+              })
+            )
+          );
+
+          // 光暈環
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(0.14, 0.009, 8, 48),
+            new THREE.MeshBasicMaterial({
+              color: 0xffaa33,
+              transparent: true,
+              opacity: 0.6,
+            })
+          );
+          ring.rotation.x = Math.PI / 2;
+          g.add(ring);
+
+          // 爆散粒子（8顆小球）
+          const particles = new THREE.Group();
+          for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            const orb = new THREE.Mesh(
+              new THREE.SphereGeometry(0.016, 6, 6),
+              new THREE.MeshPhongMaterial({ color: 0xffdd00, shininess: 80 })
+            );
+            orb.userData.angle = angle;
+            orb.userData.radius = 0;
+            particles.add(orb);
+          }
+          g.add(particles);
+
+          g._gem = gem;
+          g._ring = ring;
+          g._particles = particles;
+          g.visible = false;
+          g.scale.setScalar(0);
+          return g;
+        }
+
+        const gemModels = [makeGemModel(), makeGemModel()];
+        gemModels.forEach((m) => scene.add(m));
+
+        // ── 動畫：爆開效果 ─────────────────────────────────────────
+        function animateGem(m, hs) {
+          const elapsed = tick - hs.spawnTick;
+
+          // 縮放彈跳
+          let s;
+          if (elapsed < 8)
+            s = (elapsed / 8) * 1.3; // 快速放大
+          else if (elapsed < 14)
+            s = 1.3 - ((elapsed - 8) / 6) * 0.3; // 彈回
+          else s = 1.0;
+          m.scale.setScalar(s);
+
+          // 旋轉
+          m._gem.rotation.y = tick * 0.05;
+          m._gem.rotation.x = tick * 0.02;
+          m._ring.rotation.z = tick * 0.04;
+
+          // 粒子爆散
+          const maxR = 0.26;
+          const pProgress = Math.min(elapsed / 20, 1);
+          const radius = pProgress * maxR;
+          m._particles.children.forEach((orb) => {
+            const a = orb.userData.angle;
+            orb.position.set(Math.cos(a) * radius, Math.sin(a) * radius, 0);
+            orb.material.opacity = 1 - pProgress;
+            orb.material.transparent = true;
+          });
+        }
+
+        // ── 手勢辨識 ───────────────────────────────────────────────
+        // 指尖 landmark: 4,8,12,16,20 / 指根(MCP): 2,5,9,13,17
+        const FINGER_TIPS = [4, 8, 12, 16, 20];
+        const FINGER_MCP = [2, 5, 9, 13, 17];
+
+        function isFist(lm) {
+          let bent = 0;
+          for (let i = 0; i < 5; i++) {
+            const tip = lm[FINGER_TIPS[i]];
+            const mcp = lm[FINGER_MCP[i]];
+            // 大拇指用 X，其他用 Y
+            if (i === 0) {
+              if (Math.abs(tip.x - mcp.x) < 0.06) bent++;
+            } else {
+              if (tip.y > mcp.y) bent++; // tip 比 mcp 更低 = 彎曲（Y 向下）
+            }
+          }
+          return bent >= 4;
+        }
+
+        function isOpen(lm) {
+          let extended = 0;
+          for (let i = 1; i < 5; i++) {
+            const tip = lm[FINGER_TIPS[i]];
+            const mcp = lm[FINGER_MCP[i]];
+            if (tip.y < mcp.y - 0.04) extended++;
+          }
+          return extended >= 3;
+        }
+
+        // ── 座標工具 ───────────────────────────────────────────────
+        function lmToWorld(lm) {
+          return new THREE.Vector3(
+            (lm.x - 0.5) * 2,
+            -(lm.y - 0.5) * 2,
+            -lm.z * 2
+          );
+        }
+        function handScale(lm) {
+          return lmToWorld(lm[0]).distanceTo(lmToWorld(lm[9])) * 2.8;
+        }
+
+        function resizeRenderer() {
+          const w = video.clientWidth || 580;
+          const h = video.clientHeight || 435;
+          renderer.setSize(w, h, false);
+          const aspect = w / h;
+          cam3d.left = -1;
+          cam3d.right = 1;
+          cam3d.top = 1 / aspect;
+          cam3d.bottom = -1 / aspect;
+          cam3d.updateProjectionMatrix();
+        }
+
+        // ── 每幀處理 ───────────────────────────────────────────────
+        function onResults(results) {
+          const now = Date.now();
+          gemModels.forEach((m) => (m.visible = false));
+
+          const detected =
+            results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+
+          // 如果手消失，重置所有狀態
+          const activeCount = detected ? results.multiHandLandmarks.length : 0;
+          for (let i = activeCount; i < 2; i++) {
+            if (handState[i].phase !== "idle")
+              handState[i] = {
+                phase: "idle",
+                fistSince: 0,
+                showSince: 0,
+                spawnTick: -999,
+              };
+          }
+
+          if (detected) {
+            const labels = [];
+            results.multiHandLandmarks.forEach((lm, i) => {
+              if (i >= 2) return;
+              const hs = handState[i];
+              const pos = lmToWorld(lm[9]);
+              const s = handScale(lm);
+
+              const fist = isFist(lm);
+              const open = isOpen(lm);
+
+              // ── 狀態轉換 ──────────────────────────────────────
+              if (hs.phase === "idle") {
+                if (fist) {
+                  hs.phase = "fisting";
+                  hs.fistSince = now;
+                }
+              } else if (hs.phase === "fisting") {
+                if (!fist) {
+                  hs.phase = "idle";
+                } else if (now - hs.fistSince >= FIST_HOLD_MS) {
+                  hs.phase = "ready";
+                }
+              } else if (hs.phase === "ready") {
+                if (open) {
+                  hs.phase = "showing";
+                  hs.showSince = now;
+                  hs.spawnTick = tick;
+                } else if (!fist) {
+                  // 鬆開但沒完全張開，給予短暫寬容
+                }
+                if (now - hs.fistSince > FIST_HOLD_MS + FIST_TIMEOUT_MS) {
+                  hs.phase = "idle";
+                }
+              } else if (hs.phase === "showing") {
+                if (fist) {
+                  // 再握拳 → 重置
+                  hs.phase = "idle";
+                }
+              }
+
+              // ── 渲染 ──────────────────────────────────────────
+              if (hs.phase === "showing") {
+                const m = gemModels[i];
+                m.position.set(pos.x, pos.y, 0);
+                m.visible = true;
+                animateGem(m, hs);
+                labels.push("爆現寶石!");
+              } else {
+                // 顯示手勢偵測狀態
+                if (hs.phase === "idle") labels.push(fist ? "握緊中…" : "待機");
+                if (hs.phase === "fisting")
+                  labels.push(
+                    `握拳確認中 ${Math.round((now - hs.fistSince) / 100) * 100}ms`
+                  );
+                if (hs.phase === "ready") labels.push("張開手掌!");
+              }
+
+              // 更新提示點
+              if (i === 0) {
+                dotFist.className =
+                  "hint-dot" +
+                  (hs.phase === "fisting" || hs.phase === "ready"
+                    ? " active"
+                    : "");
+                dotOpen.className =
+                  "hint-dot" +
+                  (hs.phase === "showing"
+                    ? " ready"
+                    : hs.phase === "ready"
+                      ? " active"
+                      : "");
+                hintLabel.textContent = labels[0] || "等待手部";
+              }
+            });
+            setStatus("✋ " + labels.join(" / "), "#1D9E75");
+          } else {
+            setStatus("偵測中…", "#1a6ef5");
+            hintLabel.textContent = "等待手部";
+            dotFist.className = "hint-dot";
+            dotOpen.className = "hint-dot";
+          }
+
+          resizeRenderer();
+          renderer.render(scene, cam3d);
+          tick++;
+        }
+
+        function setStatus(txt, color) {
+          statusEl.textContent = txt;
+          statusEl.style.color = color || "#888";
+        }
+
+        // ── 主迴圈 ─────────────────────────────────────────────────
+        async function loop() {
+          if (!running) return;
+          if (video.readyState >= 2) await hands.send({ image: video });
+          rafId = requestAnimationFrame(loop);
+        }
+
+        async function startDetection() {
+          startBtn.disabled = true;
+          setStatus("載入中…");
+          try {
+            let stream;
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                  facingMode: { exact: "environment" },
+                  width: 640,
+                  height: 480,
+                },
+              });
+            } catch {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "environment", width: 640, height: 480 },
+              });
+            }
+            video.srcObject = stream;
+            overlayMsg.style.display = "none";
+            gestureHint.style.display = "flex";
+            await video.play();
+
+            hands = new Hands({
+              locateFile: (f) =>
+                `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`,
+            });
+            hands.setOptions({
+              maxNumHands: 2,
+              modelComplexity: 1,
+              minDetectionConfidence: 0.7,
+              minTrackingConfidence: 0.6,
+            });
+            hands.onResults(onResults);
+
+            running = true;
+            rafId = requestAnimationFrame(loop);
+            setStatus("偵測中…", "#1a6ef5");
+            stopBtn.disabled = false;
+          } catch (err) {
+            overlayMsg.textContent = "無法存取相機：" + err.message;
+            overlayMsg.style.display = "flex";
+            startBtn.disabled = false;
+            setStatus("錯誤", "#E24B4A");
+          }
+        }
+
+        function stopDetection() {
+          running = false;
+          if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          if (video.srcObject) {
+            video.srcObject.getTracks().forEach((t) => t.stop());
+            video.srcObject = null;
+          }
+          gemModels.forEach((m) => {
+            m.visible = false;
+            m.scale.setScalar(0);
+          });
+          renderer.render(scene, cam3d);
+          overlayMsg.textContent = "點擊「開始」啟用相機";
+          overlayMsg.style.display = "flex";
+          gestureHint.style.display = "none";
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          setStatus("已停止");
+        }
+
+        startBtn.addEventListener("click", startDetection);
+        stopBtn.addEventListener("click", stopDetection);
+      })();
+    </script>
+  </body>
+</html>

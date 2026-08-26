@@ -1,8 +1,194 @@
 {
   "common": {
-    "appTitle": "mediapipe 測試"
+    "appTitle": "MediaPipe 互動展示"
   },
   "home": {
-    "lead": "專案已建立，可開始開發。"
+    "eyebrow": "即時相機互動",
+    "lead": "同一頁面整合手勢特效、舞蹈偵測與伊布辨識。全部效果都直接從相機畫面即時運算，並優先使用後置鏡頭。",
+    "tabs": {
+      "gesture": "手勢寶石",
+      "dance": "跳舞小熊",
+      "eevee": "伊布辨識",
+      "smile": "微笑惡魔面具"
+    },
+    "panels": {
+      "gesture": {
+        "title": "握拳觸發的寶石特效",
+        "description": "先握拳 2 秒蓄力，再張開手掌，就會生成跟著手部移動的寶石特效。"
+      },
+      "dance": {
+        "title": "舞蹈動作偵測",
+        "description": "當人物持續大幅度移動時，畫面周圍會出現跳舞小熊，強化舞動感。"
+      },
+      "eevee": {
+        "title": "伊布圖像辨識與 3D 展示",
+        "description": "將和 `eevee.png` 相似的物件對準鏡頭，系統會顯示自動旋轉的伊布模型與基本資料。"
+      },
+      "smile": {
+        "title": "微笑觸發的惡魔面具",
+        "description": "當 Face Mesh 偵測到你正在微笑時，畫面會自動在臉上戴上惡魔面具。"
+      }
+    },
+    "steps": {
+      "gesture": {
+        "step1": {
+          "title": "1. 讓單手完整入鏡",
+          "description": "保持一隻手清楚出現在畫面中央，讓手部關節追蹤更穩定。"
+        },
+        "step2": {
+          "title": "2. 握拳蓄力",
+          "description": "持續握拳約 2 秒，等進度條填滿後就會進入可觸發狀態。"
+        },
+        "step3": {
+          "title": "3. 張手觸發",
+          "description": "張開手掌後會生成寶石，再次握拳即可重置並重新開始。"
+        }
+      },
+      "dance": {
+        "step1": {
+          "title": "1. 讓全身入鏡",
+          "description": "盡量讓頭、肩、臀與腳都出現在畫面中，姿勢偵測會更穩定。"
+        },
+        "step2": {
+          "title": "2. 保持持續動作",
+          "description": "四肢與身體連續擺動會提高舞蹈能量分數，更容易觸發效果。"
+        },
+        "step3": {
+          "title": "3. 小熊加入伴舞",
+          "description": "系統確認你正在跳舞後，數隻跳舞小熊就會出現在人物周圍。"
+        }
+      },
+      "eevee": {
+        "step1": {
+          "title": "1. 使用後置鏡頭",
+          "description": "按下開始後會優先請求後置鏡頭，較適合對準印刷圖、卡片或公仔。"
+        },
+        "step2": {
+          "title": "2. 對準相似圖像",
+          "description": "把和 `eevee.png` 相近的圖樣放進鏡頭中央，系統會持續比對相似度。"
+        },
+        "step3": {
+          "title": "3. 顯示模型與資料",
+          "description": "相似度達標後，就會出現自動旋轉的 `eevee.glb` 與伊布的基本介紹卡。"
+        }
+      },
+      "smile": {
+        "step1": {
+          "title": "1. 讓臉部入鏡",
+          "description": "使用後置鏡頭，讓臉部保持在畫面中央。"
+        },
+        "step2": {
+          "title": "2. 對鏡頭微笑",
+          "description": "嘴角張開並保持微笑，Face Mesh 會即時分析臉部特徵。"
+        },
+        "step3": {
+          "title": "3. 戴上惡魔面具",
+          "description": "偵測到笑容後，惡魔面具會跟著臉部位置與角度移動。"
+        }
+      }
+    }
+  },
+  "gesture": {
+    "loading": "載入中...",
+    "start": "開始手勢特效",
+    "stop": "停止手勢特效",
+    "instructions": {
+      "hold": "先握拳約 2 秒完成蓄力，再張手觸發寶石特效。",
+      "reset": "寶石出現後再次握拳即可清空效果，重新開始。"
+    },
+    "state": {
+      "booting": "正在啟動相機...",
+      "idle": "等待手部進入畫面",
+      "holdPrompt": "請握拳維持 2 秒",
+      "holding": "握拳蓄力中 {seconds} / 2.0 秒",
+      "ready": "已蓄力完成，張開手掌即可觸發",
+      "showing": "寶石特效已跟隨手部顯示",
+      "tracking": "偵測到手部，開始手勢互動",
+      "cameraPrompt": "點擊下方按鈕啟動相機",
+      "cameraLoading": "正在連線相機與手勢模型...",
+      "cameraError": "無法啟動相機：{message}",
+      "loadError": "手勢模型載入失敗，請稍後再試。"
+    }
+  },
+  "dance": {
+    "loading": "載入中...",
+    "start": "開始舞蹈偵測",
+    "stop": "停止舞蹈偵測",
+    "popup": "偵測到跳舞！小熊已加入伴舞。",
+    "instructions": {
+      "detect": "讓身體維持在畫面中，持續擺動四肢與軀幹即可提高辨識成功率。",
+      "reset": "如果動作減少，小熊會離場；再度舞動就能重新觸發。"
+    },
+    "state": {
+      "booting": "正在啟動相機...",
+      "idle": "等待人物進入畫面",
+      "tracking": "偵測到人物，開始跳舞吧",
+      "searching": "正在追蹤身體姿勢",
+      "energy": "動作能量值 {score}",
+      "dancing": "已偵測到跳舞，小熊登場中",
+      "cameraPrompt": "點擊下方按鈕啟動舞蹈偵測",
+      "cameraLoading": "正在連線相機與姿勢模型...",
+      "cameraError": "無法啟動相機：{message}",
+      "loadError": "姿勢模型載入失敗，請稍後再試。"
+    }
+  },
+  "eevee": {
+    "loading": "載入中...",
+    "start": "開始伊布辨識",
+    "stop": "停止伊布辨識",
+    "similarity": "相似度",
+    "detectedBadge": "已發現伊布相似物件",
+    "modelLoading": "正在載入 3D 伊布模型...",
+    "modelError": "3D 模型元件載入失敗，請確認網路後重新整理。",
+    "instructions": {
+      "detect": "請把和 `eevee.png` 相近的圖片、卡片或模型放在鏡頭中央區域。",
+      "camera": "系統會優先使用後置鏡頭，若裝置不支援才會退回其他可用鏡頭。"
+    },
+    "state": {
+      "booting": "正在啟動相機...",
+      "idle": "等待伊布相似物件",
+      "tracking": "後置鏡頭已啟動，開始掃描畫面",
+      "scanning": "掃描中，目前相似度 {score}%",
+      "detected": "已找到相似物件，相似度 {score}%",
+      "cameraPrompt": "點擊下方按鈕啟動伊布辨識",
+      "cameraLoading": "正在連線後置鏡頭與比對模組...",
+      "cameraError": "無法啟動相機：{message}",
+      "loadError": "伊布辨識模組載入失敗，請稍後再試。"
+    },
+    "info": {
+      "dex": "全國圖鑑 #0133",
+      "name": "伊布 Eevee",
+      "description": "伊布是一般屬性的寶可夢，體內遺傳因子非常不穩定，能因環境刺激演化成多種不同形態。",
+      "typeLabel": "屬性",
+      "typeValue": "一般",
+      "heightLabel": "身高",
+      "heightValue": "0.3 m",
+      "weightLabel": "體重",
+      "weightValue": "6.5 kg",
+      "featureLabel": "特色",
+      "featureValue": "能依環境演化"
+    }
+  },
+  "smile": {
+    "loading": "載入中...",
+    "start": "開始微笑偵測",
+    "stop": "停止微笑偵測",
+    "score": "笑容分數",
+    "instructions": {
+      "detect": "對著後置鏡頭微笑，偵測到笑容後就會戴上惡魔面具。",
+      "camera": "系統會優先使用後置鏡頭，若裝置不支援才會退回其他可用鏡頭。"
+    },
+    "state": {
+      "booting": "正在啟動相機...",
+      "idle": "等待臉部進入畫面",
+      "tracking": "已偵測到臉部，請微笑",
+      "detected": "偵測到笑容，惡魔面具已戴上",
+      "maskOn": "惡魔面具啟用中",
+      "smilePrompt": "請對鏡頭微笑",
+      "cameraPrompt": "點擊下方按鈕啟動相機",
+      "cameraLoading": "正在連線後置鏡頭與臉部模型...",
+      "cameraError": "無法啟動相機：{message}",
+      "loadError": "臉部模型載入失敗，請稍後再試。"
+    }
   }
 }

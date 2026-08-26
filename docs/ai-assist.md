@@ -33,11 +33,11 @@
 
 專案預置以下流程。Cursor 可用 `/commit` 等觸發；其他 AI 依 `AGENTS.md` Skills 表或 `.cursor/skills/*/SKILL.md` 執行。
 
-| Skill              | 用途        | 要點                                                                                            |
-| ------------------ | ----------- | ----------------------------------------------------------------------------------------------- |
-| `commit`           | 完整 commit | 先 format／lint／type-check；依 docs／tooling／app 分類成少量 Conventional Commits；預設不 push |
-| `push`             | 安全推送    | 先 type-check／lint／stylelint／format:check；禁止 force push                                   |
-| `deploy`           | 部署與版號  | `build:stage`／`build:uat`／`build:prod` + bump／tag；見 `docs/deployment.md`                   |
+| Skill            | 用途        | 要點                                                                                            |
+| ---------------- | ----------- | ----------------------------------------------------------------------------------------------- |
+| `commit`         | 完整 commit | 先 format／lint／type-check；依 docs／tooling／app 分類成少量 Conventional Commits；預設不 push |
+| `push`           | 安全推送    | 先 type-check／lint／stylelint／format:check；禁止 force push                                   |
+| `deploy`         | 部署與版號  | `build:stage`／`build:uat`／`build:prod` + bump／tag；見 `docs/deployment.md`                   |
 | `mediapipe-test` | 專案導覽    | 常用指令、目錄、必讀文件速查                                                                    |
 
 ## 與工具無關的底線

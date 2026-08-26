@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>跳舞偵測</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        min-height: 100vh;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        color: #f0f3f7;
+        background: #101522;
+        font-family: sans-serif;
+      }
+      h2 {
+        margin-top: 4px;
+        color: #8ec5ff;
+        font-size: 18px;
+        letter-spacing: 0.08em;
+      }
+      #container {
+        position: relative;
+        width: 100%;
+        max-width: 640px;
+        overflow: hidden;
+        border: 1px solid #38557a;
+        border-radius: 12px;
+        background: #000;
+      }
+      #video {
+        display: block;
+        width: 100%;
+        transform: scaleX(-1);
+      }
+      #poseCanvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+      #overlay-msg {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.68);
+        text-align: center;
+      }
+      #dance-popup {
+        position: absolute;
+        top: 18px;
+        left: 50%;
+        z-index: 2;
+        width: max-content;
+        max-width: calc(100% - 32px);
+        padding: 13px 20px;
+        border: 1px solid #8ec5ff;
+        border-radius: 10px;
+        color: #10203a;
+        background: #c9e3ff;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+        font-size: 18px;
+        font-weight: bold;
+        opacity: 0;
+        transform: translate(-50%, -12px);
+        pointer-events: none;
+        transition:
+          opacity 0.2s ease,
+          transform 0.2s ease;
+      }
+      #dance-popup.visible {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      button {
+        padding: 8px 20px;
+        border: 0;
+        border-radius: 8px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      #startBtn {
+        color: #0e2138;
+        background: #8ec5ff;
+      }
+      #startBtn:disabled {
+        color: #657080;
+        background: #303b4c;
+        cursor: default;
+      }
+      #stopBtn {
+        color: #c0ccda;
+        border: 1px solid #45536a;
+        background: #202a38;
+      }
+      #stopBtn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #status {
+        color: #9aa8bb;
+        font-size: 13px;
+      }
+      .info {
+        width: 100%;
+        max-width: 640px;
+        padding: 11px 14px;
+        border-radius: 8px;
+        color: #9aa8bb;
+        background: #1b2535;
+        font-size: 12px;
+        line-height: 1.8;
+      }
+      @media (max-width: 480px) {
+        h2 {
+          font-size: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h2>MediaPipe 跳舞偵測</h2>
+
+    <div id="container">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="poseCanvas"></canvas>
+      <div id="overlay-msg">點擊「開始」啟用相機</div>
+      <div id="dance-popup" role="status" aria-live="polite">
+        使用者在跳舞！
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">開始</button>
+      <button id="stopBtn" disabled>停止</button>
+      <span id="status">待機中</span>
+    </div>
+
+    <div class="info">
+      請讓全身出現在畫面中並開始活動。系統會分析肩膀、髖部、手腕與腳踝的連續動作，確認後顯示提示。
+    </div>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      (() => {
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("poseCanvas");
+        const context = canvas.getContext("2d");
+        const overlay = document.getElementById("overlay-msg");
+        const popup = document.getElementById("dance-popup");
+        const startButton = document.getElementById("startBtn");
+        const stopButton = document.getElementById("stopBtn");
+        const status = document.getElementById("status");
+        const trackedPoints = [11, 12, 15, 16, 23, 24, 27, 28];
+        const connections = [
+          [11, 12],
+          [11, 23],
+          [12, 24],
+          [23, 24],
+          [11, 13],
+          [13, 15],
+          [12, 14],
+          [14, 16],
+          [23, 25],
+          [25, 27],
+          [24, 26],
+          [26, 28],
+        ];
+        const motionSamples = [];
+        let pose;
+        let stream;
+        let animationFrame;
+        let running = false;
+        let previousPose;
+        let activeSamples = 0;
+        let popupTimer;
+        let wasDancing = false;
+        let cooldownUntil = 0;
+
+        function drawPose(landmarks) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          context.strokeStyle = "#8ec5ff";
+          context.lineWidth = 4;
+          connections.forEach(([first, second]) => {
+            const start = landmarks[first];
+            const end = landmarks[second];
+            if (start.visibility < 0.5 || end.visibility < 0.5) return;
+            context.beginPath();
+            context.moveTo(
+              (1 - start.x) * canvas.width,
+              start.y * canvas.height
+            );
+            context.lineTo((1 - end.x) * canvas.width, end.y * canvas.height);
+            context.stroke();
+          });
+          context.fillStyle = "#c9e3ff";
+          trackedPoints.forEach((index) => {
+            const point = landmarks[index];
+            if (point.visibility < 0.5) return;
+            context.beginPath();
+            context.arc(
+              (1 - point.x) * canvas.width,
+              point.y * canvas.height,
+              5,
+              0,
+              Math.PI * 2
+            );
+            context.fill();
+          });
+        }
+
+        function averageMotion(landmarks) {
+          if (!previousPose) {
+            previousPose = trackedPoints.map((index) => ({
+              x: landmarks[index].x,
+              y: landmarks[index].y,
+            }));
+            return 0;
+          }
+          let total = 0;
+          let visible = 0;
+          trackedPoints.forEach((index, position) => {
+            const point = landmarks[index];
+            if (point.visibility < 0.5) return;
+            const previous = previousPose[position];
+            total += Math.hypot(point.x - previous.x, point.y - previous.y);
+            visible++;
+            previous.x = point.x;
+            previous.y = point.y;
+          });
+          return visible ? total / visible : 0;
+        }
+
+        function showPopup() {
+          popup.classList.add("visible");
+          clearTimeout(popupTimer);
+          popupTimer = setTimeout(
+            () => popup.classList.remove("visible"),
+            2500
+          );
+        }
+
+        function onResults(results) {
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          const landmarks = results.poseLandmarks;
+          if (!landmarks) {
+            previousPose = null;
+            motionSamples.length = 0;
+            activeSamples = 0;
+            wasDancing = false;
+            status.textContent = "等待全身姿勢";
+            status.style.color = "#9aa8bb";
+            return;
+          }
+
+          drawPose(landmarks);
+          const motion = averageMotion(landmarks);
+          motionSamples.push(motion);
+          if (motionSamples.length > 24) motionSamples.shift();
+          if (motion > 0.018) activeSamples++;
+          else activeSamples = Math.max(0, activeSamples - 1);
+
+          const totalMotion =
+            motionSamples.reduce((sum, value) => sum + value, 0) /
+            motionSamples.length;
+          const dancing =
+            motionSamples.length >= 12 &&
+            activeSamples >= 8 &&
+            totalMotion > 0.012;
+          status.textContent = dancing
+            ? "偵測到跳舞"
+            : `動作分析中 ${Math.round(totalMotion * 1000)}/1000`;
+          status.style.color = dancing ? "#8ec5ff" : "#9aa8bb";
+          if (dancing && !wasDancing && Date.now() >= cooldownUntil) {
+            showPopup();
+            cooldownUntil = Date.now() + 3000;
+          }
+          wasDancing = dancing;
+        }
+
+        async function detectionLoop() {
+          if (!running) return;
+          if (video.readyState >= 2) await pose.send({ image: video });
+          animationFrame = requestAnimationFrame(detectionLoop);
+        }
+
+        async function startDetection() {
+          startButton.disabled = true;
+          status.textContent = "載入中…";
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: "user", width: 640, height: 480 },
+              audio: false,
+            });
+            video.srcObject = stream;
+            await video.play();
+            pose = new Pose({
+              locateFile: (file) =>
+                `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+            });
+            pose.setOptions({
+              modelComplexity: 1,
+              smoothLandmarks: true,
+              enableSegmentation: false,
+              minDetectionConfidence: 0.7,
+              minTrackingConfidence: 0.6,
+            });
+            pose.onResults(onResults);
+            running = true;
+            overlay.style.display = "none";
+            stopButton.disabled = false;
+            status.textContent = "等待全身姿勢";
+            animationFrame = requestAnimationFrame(detectionLoop);
+          } catch (error) {
+            if (stream) stream.getTracks().forEach((track) => track.stop());
+            stream = null;
+            overlay.textContent = "無法存取相機：" + error.message;
+            overlay.style.display = "flex";
+            status.textContent = "啟動失敗";
+            status.style.color = "#e26d6d";
+            startButton.disabled = false;
+          }
+        }
+
+        function stopDetection() {
+          running = false;
+          if (animationFrame) cancelAnimationFrame(animationFrame);
+          if (stream) stream.getTracks().forEach((track) => track.stop());
+          stream = null;
+          video.srcObject = null;
+          if (pose) pose.close();
+          previousPose = null;
+          motionSamples.length = 0;
+          activeSamples = 0;
+          wasDancing = false;
+          popup.classList.remove("visible");
+          clearTimeout(popupTimer);
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          overlay.textContent = "點擊「開始」啟用相機";
+          overlay.style.display = "flex";
+          startButton.disabled = false;
+          stopButton.disabled = true;
+          status.textContent = "已停止";
+          status.style.color = "#9aa8bb";
+        }
+
+        startButton.addEventListener("click", startDetection);
+        stopButton.addEventListener("click", stopDetection);
+      })();
+    </script>
+  </body>
+</html>

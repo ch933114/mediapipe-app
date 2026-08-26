@@ -13,6 +13,7 @@
 7. **Figma MCP**：**預設唯讀**；未經使用者明確要求不得寫入 Figma；見 `docs/figma-mcp.md`
 8. **Commit**：Conventional Commits；見 `docs/commit-conventions.md`（Husky + commitlint 會擋）
 9. **Secrets**：禁止寫進前端程式碼／commit `.env` 憑證
+10. **解讀編碼** : 使用 UTF8 讀取各個檔案
 
 動筆前若尚未讀過，先讀：`docs/naming-conventions.md`、`docs/code-conventions.md`、`docs/comment-conventions.md`、`docs/figma-mcp.md`、`docs/project-conventions.md`。
 
@@ -23,7 +24,6 @@
 - Vue Router
 - Tailwind CSS（可選，預設啟用）
 - vue-i18n（可選，預設啟用）
-  
 
 ## Branches & Environments
 
@@ -59,11 +59,11 @@
 
 ## Skills（標準流程）
 
-| 指令／Skill         | 用途                                   |
-| ------------------- | -------------------------------------- |
-| `/commit`           | 檢查後分類提交（Conventional Commits） |
-| `/push`             | 檢查後安全推送（不 force）             |
-| `/deploy`           | 依環境 build + bump／tag               |
+| 指令／Skill       | 用途                                   |
+| ----------------- | -------------------------------------- |
+| `/commit`         | 檢查後分類提交（Conventional Commits） |
+| `/push`           | 檢查後安全推送（不 force）             |
+| `/deploy`         | 依環境 build + bump／tag               |
 | `/mediapipe-test` | 本專案導覽與常用指令                   |
 
 詳見 `docs/ai-assist.md`；Skill 原文在 `.cursor/skills/*/SKILL.md`。
