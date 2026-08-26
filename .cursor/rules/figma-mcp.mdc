@@ -1,0 +1,21 @@
+---
+description: Figma MCP — 預設唯讀；未經使用者明確允許不得寫入或修改 Figma
+alwaysApply: true
+---
+
+# Figma MCP 使用規範
+
+完整規則見 `docs/figma-mcp.md`。
+
+## 原則
+
+- **預設唯讀**：只讀取設計（截圖、結構、tokens、Code Connect 等）
+- **禁止擅自寫入**：未經使用者**明確要求**，不得對 Figma 做建立／修改／刪除／上傳／同步寫入
+- **有疑慮先問**：任務可能涉及寫入但未明說時，先確認再執行
+
+## 行為對照
+
+```text
+❌ BAD：「照這個 Figma 做元件」→ 自行 use_figma / generate_figma_design 改稿
+✅ GOOD：「照這個 Figma 做元件」→ 只讀取設計，在程式碼實作
+```

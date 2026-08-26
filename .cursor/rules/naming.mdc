@@ -1,0 +1,37 @@
+---
+description: 檔案與程式碼命名規範（AI 必須遵守）
+globs: **/*.{ts,vue,css,scss,json}
+alwaysApply: true
+---
+
+# 命名規範（強制）
+
+完整規則見 `docs/naming-conventions.md`。新增／重命名時必須遵守；不確定時先讀該文件。
+
+## 檔名
+
+- 元件／頁面：`PascalCase`（`UserCard.vue`、`HomeView.vue`）
+- View 後綴：`*View.vue`
+- Composable：`useXxx.ts`（camelCase 檔名）
+- Store：`user.ts` → `useUserStore`；store id 用 kebab-case（`user`）
+- Model：`UserModel.ts`
+- 其餘 `.ts`（utils／services／types／constants）：**camelCase**
+- 圖片／樣式／多字目錄：**kebab-case**
+- 禁止檔名 snake_case、無意義 Temp／Copy／New
+
+## 程式碼
+
+- 變數／函式／props／emits：camelCase
+- 布林：`is`／`has`／`can`／`should` 前綴
+- 型別／介面：PascalCase；**禁止** `I` 前綴；Props 用 `ComponentNameProps`
+- 模組級常數：`SCREAMING_SNAKE`
+- Composable：`useXxx`；Pinia：`useXxxStore`
+- 路由 `path`：kebab-case；env：`VITE_` + SCREAMING_SNAKE
+- i18n key：`section.key`（階層、非中文當 key）
+- 自訂 CSS class／CSS 變數：kebab-case
+- 識別子英文；UI 文案繁中
+- 後端 snake_case 只在 model／mapper 轉換，前端其餘層用 camelCase
+
+## 匯出
+
+檔名與主要匯出名稱對齊（`UserCard.vue` → `UserCard`；`useAuth.ts` → `useAuth`）。

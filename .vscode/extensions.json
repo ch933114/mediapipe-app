@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "Vue.volar",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "EditorConfig.EditorConfig",
+    "bradlc.vscode-tailwindcss",
+    "stylelint.vscode-stylelint",
+    "vivaxy.vscode-conventional-commits",
+    "lokalise.i18n-ally"
+  ]
+}

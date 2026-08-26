@@ -1,0 +1,29 @@
+---
+description: Omniguider CSS / 樣式撰寫慣例
+globs: src/**/*.{vue,css,scss}
+alwaysApply: false
+---
+
+# CSS 風格
+
+## 優先順序
+
+1. Tailwind utility class（專案預設啟用）
+2. `src/assets/styles/` 全域樣式
+3. 元件 scoped `<style>`（最後手段）
+
+## Vue SFC 樣式
+
+- 預設不加 scoped，除非樣式僅限單一元件且會污染全域
+- 使用 `lang="scss"` 時，變數放 `assets/styles/`，不在元件內重複定義
+
+## 禁止
+
+- 硬編碼色票 hex（有設計系統改用其 token；否則用 Tailwind / `theme.extend`）
+- `!important`（除非覆寫第三方套件且註明原因）
+- 大量 inline style（`style="..."`）
+
+## stylelint
+
+- 提交前通過 `pnpm run stylelint`
+- 詳見 `docs/css-conventions.md`；有設計系統時一併見 `docs/design-system.md`

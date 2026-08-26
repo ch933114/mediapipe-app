@@ -1,0 +1,27 @@
+{
+  "templateVersion": "1.5.1",
+  "projectName": "mediapipe-test",
+  "hasUat": false,
+  "features": {
+    "eslint": true,
+    "stylelint": true,
+    "gitHooks": true,
+    "cursor": true,
+    "tailwind": true,
+    "i18n": true,
+    "axios": true,
+    "bridge": "none"
+  },
+  "tagStrategy": {
+    "test": {
+      "major": 0,
+      "minor": 0,
+      "bump": "patch",
+      "initialPatch": 1
+    },
+    "main": {
+      "bump": "major",
+      "initialMajor": 1
+    }
+  }
+}
