@@ -1,0 +1,28 @@
+---
+description: Omniguider 前端核心規範（mediapipe 測試）
+alwaysApply: true
+---
+
+## 核心
+
+- 專案：mediapipe 測試（mediapipe-test）
+- UI 語言：繁體中文
+- 分支：`main`（正式站）、`test`（測試站）、可選 `uat`（正式站前測試環境）
+- 版號（tag）：
+  - test：`v0.0.y`
+  - uat：`v0.x.0`（可選分支）
+  - main：`v{x}.0.0`
+
+## 必讀（共用真相在 docs/）
+
+1. `AGENTS.md`
+2. `docs/ai-assist.md`
+3. `docs/project-conventions.md`
+4. `docs/naming-conventions.md`（檔案＋程式碼命名；AI 必須遵守）
+5. `docs/deployment.md`
+6. `docs/comment-conventions.md`
+7. `docs/css-conventions.md`
+8. `docs/figma-mcp.md`
+9. `docs/design-system.md`（若專案有設計系統；無則可略）
+
+`.cursor/rules/` 為 Cursor 自動套用摘要，細節以 `docs/` 為準。

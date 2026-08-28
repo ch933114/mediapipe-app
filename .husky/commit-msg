@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Commit hook disabled / 停用提交檢核
+exit 0
+

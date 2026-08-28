@@ -1,0 +1,37 @@
+---
+description: Omniguider 設計系統 — 元件目錄、token 慣例；各專案可有／可無專屬設計系統
+globs: src/**/*.{vue,css,scss}
+alwaysApply: false
+---
+
+# 設計系統規則
+
+> 各專案可有自己的設計系統，也可能沒有。有則以 `docs/design-system.md` 為準並覆寫本檔細節；無則依下方通用規則。
+
+## 元件目錄
+
+- `components/common/` — 可跨頁共用的 UI（Button、Modal、Loading…）
+- `components/layout/` — 版型（AppHeader、AppFooter、AppLayout…）
+- `views/` — 路由頁面，負責組裝，不放可複用 UI
+
+## 有專屬設計系統時
+
+- 詳見 `docs/design-system.md`
+- Token／文字樣式／陰影等以該文件與對應 CSS／Tailwind 擴充為準
+- **禁止硬編碼** hex／隨意 px／手寫 box-shadow（除非文件允許的例外）
+
+## 無專屬設計系統時（預設）
+
+- 以 Tailwind utility class 為主
+- 品牌色、間距等擴充定義在 `tailwind.config.js` 的 `theme.extend`
+- **禁止**在 TS/Vue/CSS 硬編碼 hex（除非在 `tailwind.config.js` 內定義 token）
+
+## 響應式
+
+- mobile-first：`sm:` → `md:` → `lg:`
+- 版型斷點與 layout 元件保持一致
+
+## 驗收
+
+- 新 UI 優先複用 `components/common/` 既有元件
+- 對照 `docs/css-conventions.md`；有設計系統時一併對照 `docs/design-system.md`

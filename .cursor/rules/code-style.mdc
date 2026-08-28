@@ -1,0 +1,20 @@
+---
+description: Omniguider Vue3 / TypeScript 程式碼慣例摘要
+globs: **/*.{ts,vue}
+alwaysApply: false
+---
+
+# 程式碼風格（Vue3）
+
+- TypeScript `strict`；避免 `any`
+- Vue SFC 一律 `<script setup lang="ts">`
+- 元件檔名 **PascalCase**；一檔一主要元件
+- 命名細節（檔案／變數／store／路由／i18n／CSS）：見 `.cursor/rules/naming.mdc` 與 `docs/naming-conventions.md`
+- Import 順序：Vue/Router/Pinia → 外部 → `@/` → 相對；型別用 `import type`
+- API 層一律放 `src/services/`（不要在元件內散落 axios／fetch）
+- 若啟用 Axios：後端統一為 Result API（`{ code, message, data }`），請用 `request.ts` 的 `getData` / `postData` 等
+- `views/` 只負責組裝；可共用 UI 放 `components/common/`
+- 註解：見 `docs/comment-conventions.md`（短、雙語、只說用途）
+
+詳見 `docs/code-conventions.md`。
+

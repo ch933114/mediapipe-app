@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Push hook disabled / 停用推送檢核
+exit 0
+
