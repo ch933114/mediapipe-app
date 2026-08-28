@@ -1,7 +1,7 @@
 {
   "name": "mediapipe-test",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --mode development",
@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "preinstall": "npx only-allow pnpm",
-    "prepare": "husky"
+    "prepare": "husky",
+    "deploy": "pnpm build:stage && gh-pages -d dist"
   },
   "lint-staged": {
     "src/**/*.{ts,js,vue}": [
@@ -56,6 +57,7 @@
     "eslint-plugin-prettier": "^5.2.6",
     "eslint-plugin-vue": "^10.0.0",
     "fs-extra": "^11.3.6",
+    "gh-pages": "^6.3.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
     "only-allow": "^1.2.1",
