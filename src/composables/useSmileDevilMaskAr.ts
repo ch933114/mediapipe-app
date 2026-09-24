@@ -22,9 +22,9 @@ type FaceMeshWindow = Window &
   typeof globalThis & { FaceMesh?: FaceMeshConstructor };
 
 const SMILE_THRESHOLD = 0.38;
-const FACE_MESH_SCRIPT_URL =
-  "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js";
-const FACE_MESH_PATH = "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/";
+const FACE_MESH_VERSION = "0.4.1633559619";
+const FACE_MESH_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@${FACE_MESH_VERSION}/face_mesh.js`;
+const FACE_MESH_PATH = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@${FACE_MESH_VERSION}/`;
 let faceMeshScriptLoader: Promise<void> | null = null;
 
 function clamp(value: number, min: number, max: number) {

@@ -190,7 +190,7 @@
   }
 
   .gesture-gem-stage-button {
-    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 sm:px-5;
   }
 
   .gesture-gem-stage-button-primary {
@@ -339,6 +339,16 @@
   }
 
   @media (width <= 640px) {
+    .gesture-gem-stage {
+      @apply gap-3;
+    }
+
+    .gesture-gem-stage-viewport {
+      aspect-ratio: auto;
+      width: 100%;
+      height: min(78svh, 44rem);
+    }
+
     .gesture-gem-stage-controls {
       @apply items-stretch;
     }
@@ -349,6 +359,10 @@
 
     .gesture-gem-stage-status {
       @apply w-full;
+    }
+
+    .gesture-gem-stage-info {
+      @apply px-3 py-3 leading-6;
     }
   }
 </style>

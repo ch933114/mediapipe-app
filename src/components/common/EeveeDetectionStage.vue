@@ -245,7 +245,7 @@
   }
 
   .eevee-detection-stage-button {
-    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 sm:px-5;
   }
 
   .eevee-detection-stage-button-primary {
@@ -339,9 +339,14 @@
   }
 
   @media (width <= 640px) {
+    .eevee-detection-stage {
+      @apply gap-3;
+    }
+
     .eevee-detection-stage-viewport {
-      aspect-ratio: 3 / 4;
-      min-height: min(70svh, 42rem);
+      aspect-ratio: auto;
+      width: 100%;
+      height: min(78svh, 44rem);
     }
 
     .eevee-detection-stage-controls {
@@ -354,6 +359,14 @@
 
     .eevee-detection-stage-status {
       @apply w-full;
+    }
+
+    .eevee-detection-stage-info {
+      @apply px-3 py-3 leading-6;
+    }
+
+    .eevee-detection-stage-card {
+      @apply gap-3 p-3;
     }
 
     .eevee-detection-stage-model-shell {

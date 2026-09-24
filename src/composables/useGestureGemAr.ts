@@ -1,4 +1,3 @@
-import "@mediapipe/hands";
 import type {
   Hands as HandsClass,
   NormalizedLandmark,
@@ -32,6 +31,44 @@ const FIST_HOLD_MS = 2000;
 const READY_TIMEOUT_MS = 3000;
 const GEM_SCALE_MIN = 0.9;
 const GEM_SCALE_MAX = 1.8;
+const HANDS_VERSION = "0.4.1675469240";
+const HANDS_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${HANDS_VERSION}/hands.js`;
+const HANDS_ASSET_BASE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${HANDS_VERSION}/`;
+let handsScriptLoader: Promise<void> | null = null;
+
+function loadHandsScript() {
+  const handsWindow = window as HandsWindow;
+  if (handsWindow.Hands) return Promise.resolve();
+  if (handsScriptLoader) return handsScriptLoader;
+
+  handsScriptLoader = new Promise<void>((resolve, reject) => {
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      `script[src="${HANDS_SCRIPT_URL}"]`
+    );
+    const handleLoad = () => resolve();
+    const handleError = () =>
+      reject(new Error(i18n.global.t("gesture.state.loadError")));
+
+    if (existingScript) {
+      existingScript.addEventListener("load", handleLoad, { once: true });
+      existingScript.addEventListener("error", handleError, { once: true });
+      return;
+    }
+
+    const scriptElement = document.createElement("script");
+    scriptElement.src = HANDS_SCRIPT_URL;
+    scriptElement.async = true;
+    scriptElement.crossOrigin = "anonymous";
+    scriptElement.addEventListener("load", handleLoad, { once: true });
+    scriptElement.addEventListener("error", handleError, { once: true });
+    document.head.appendChild(scriptElement);
+  }).catch((error: unknown) => {
+    handsScriptLoader = null;
+    throw error;
+  });
+
+  return handsScriptLoader;
+}
 
 function createInitialHandState(): HandTrackingState {
   return {
@@ -292,6 +329,7 @@ export function useGestureGemAr({
     setStatus(i18n.global.t("gesture.state.booting"));
 
     try {
+      await loadHandsScript();
       mediaStream = await requestRearCameraStream();
 
       video.srcObject = mediaStream;
@@ -302,7 +340,7 @@ export function useGestureGemAr({
       }
 
       handsInstance = new handsWindow.Hands({
-        locateFile: (file) => `/mediapipe/hands/${file}`,
+        locateFile: (file) => `${HANDS_ASSET_BASE_URL}${file}`,
       });
       handsInstance.setOptions({
         maxNumHands: 1,

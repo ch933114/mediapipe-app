@@ -90,8 +90,8 @@
   },
   "gesture": {
     "loading": "Loading...",
-    "start": "Start Gesture Effect",
-    "stop": "Stop Gesture Effect",
+    "start": "Start Effect",
+    "stop": "Stop Effect",
     "instructions": {
       "hold": "Hold a fist for about 2 seconds to charge the effect.",
       "reset": "After the gem appears, make a fist again to clear it and start over."
@@ -112,8 +112,8 @@
   },
   "dance": {
     "loading": "Loading...",
-    "start": "Start Dance Detection",
-    "stop": "Stop Dance Detection",
+    "start": "Start Detection",
+    "stop": "Stop Detection",
     "popup": "Dancing detected. The bears joined the party!",
     "instructions": {
       "detect": "Keep your body in frame and move your limbs and torso with steady rhythm.",
@@ -134,8 +134,8 @@
   },
   "eevee": {
     "loading": "Loading...",
-    "start": "Start Eevee Recognition",
-    "stop": "Stop Eevee Recognition",
+    "start": "Start Scan",
+    "stop": "Stop Scan",
     "similarity": "Similarity",
     "detectedBadge": "Eevee-like object found",
     "modelLoading": "Loading the 3D Eevee model...",
@@ -171,8 +171,8 @@
   },
   "smile": {
     "loading": "Loading...",
-    "start": "Start Smile Detection",
-    "stop": "Stop Smile Detection",
+    "start": "Start Detection",
+    "stop": "Stop Detection",
     "score": "Smile score",
     "instructions": {
       "detect": "Smile at the rear camera and the devil mask appears when detected.",

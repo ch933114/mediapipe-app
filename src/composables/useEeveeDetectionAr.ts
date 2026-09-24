@@ -44,10 +44,9 @@ type MediaPipeTasksVisionModule = {
   };
 };
 
-const TASKS_VISION_MODULE_URL =
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/+esm";
-const TASKS_VISION_WASM_ROOT =
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
+const TASKS_VISION_VERSION = "1.0.1";
+const TASKS_VISION_MODULE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VISION_VERSION}/+esm`;
+const TASKS_VISION_WASM_ROOT = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VISION_VERSION}/wasm`;
 const IMAGE_EMBEDDER_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_small/float32/1/mobilenet_v3_small.tflite";
 
@@ -118,7 +117,10 @@ async function loadEmbedderModule() {
 }
 
 async function ensureImageEmbedder() {
-  embedderLoaderPromise ??= loadEmbedderModule();
+  embedderLoaderPromise ??= loadEmbedderModule().catch((error: unknown) => {
+    embedderLoaderPromise = null;
+    throw error;
+  });
 
   return embedderLoaderPromise;
 }

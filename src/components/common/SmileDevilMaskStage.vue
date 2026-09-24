@@ -111,7 +111,7 @@
   }
 
   .smile-devil-stage-button {
-    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 sm:px-5;
   }
 
   .smile-devil-stage-button-primary {
@@ -219,6 +219,34 @@
 
     to {
       opacity: 1;
+    }
+  }
+
+  @media (width <= 640px) {
+    .smile-devil-stage {
+      @apply gap-3;
+    }
+
+    .smile-devil-stage-viewport {
+      aspect-ratio: auto;
+      width: 100%;
+      height: min(78svh, 44rem);
+    }
+
+    .smile-devil-stage-controls {
+      @apply items-stretch;
+    }
+
+    .smile-devil-stage-button {
+      @apply flex-1;
+    }
+
+    .smile-devil-stage-status {
+      @apply w-full;
+    }
+
+    .smile-devil-stage-info {
+      @apply px-3 py-3 leading-6;
     }
   }
 </style>

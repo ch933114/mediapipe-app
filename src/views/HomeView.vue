@@ -137,11 +137,11 @@
 </script>
 
 <template>
-  <main class="min-h-screen bg-[#05070d] px-4 py-8 text-white sm:px-6 lg:px-8">
+  <main class="min-h-screen bg-[#05070d] px-0 py-3 text-white sm:px-6 sm:py-8 lg:px-8">
     <section
-      class="mx-auto flex w-full max-w-6xl flex-col gap-8 rounded-[32px] border border-white/10 bg-white/[0.03] px-5 py-6 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur sm:px-8 sm:py-8"
+      class="mx-auto flex w-full max-w-6xl flex-col gap-4 border-y border-white/10 bg-white/[0.03] px-3 py-4 sm:gap-8 sm:rounded-[32px] sm:border sm:px-8 sm:py-8 sm:shadow-[0_30px_120px_rgba(0,0,0,0.35)] sm:backdrop-blur"
     >
-      <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-2 sm:gap-3">
         <p
           class="w-fit rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-cyan-200"
         >
@@ -152,7 +152,7 @@
         >
           {{ t("common.appTitle") }}
         </h1>
-        <p class="max-w-3xl text-sm leading-7 text-white/70 sm:text-base">
+        <p class="max-w-3xl text-sm leading-6 text-white/70 sm:text-base sm:leading-7">
           {{ t("home.lead") }}
         </p>
       </div>
@@ -166,7 +166,7 @@
           v-for="tabItem in tabItems"
           :key="tabItem.key"
           :class="[
-            'home-tab-card rounded-[28px] border px-5 py-4 text-left transition',
+            'home-tab-card rounded-2xl border px-3 py-3 text-left transition sm:rounded-[28px] sm:px-5 sm:py-4',
             activeTab === tabItem.key
               ? 'border-cyan-300/70 bg-cyan-400/10 shadow-[0_16px_50px_rgba(34,211,238,0.14)]'
               : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.08]',
@@ -175,18 +175,18 @@
           @click="activeTab = tabItem.key"
         >
           <p class="text-base font-semibold text-white">{{ tabItem.title }}</p>
-          <p class="mt-2 text-sm leading-6 text-white/65">
+          <p class="mt-1.5 text-sm leading-5 text-white/65 sm:mt-2 sm:leading-6">
             {{ tabItem.description }}
           </p>
         </button>
       </div>
 
-      <div class="rounded-[28px] border border-white/10 bg-black/15 p-5 sm:p-6">
-        <div class="mb-6 flex flex-col gap-2">
-          <h2 class="text-2xl font-semibold text-white">
+      <div class="rounded-2xl border border-white/10 bg-black/15 p-3 sm:rounded-[28px] sm:p-6">
+        <div class="mb-3 flex flex-col gap-1 sm:mb-6 sm:gap-2">
+          <h2 class="text-xl font-semibold text-white sm:text-2xl">
             {{ activePanel.title }}
           </h2>
-          <p class="max-w-3xl text-sm leading-7 text-white/65">
+          <p class="max-w-3xl text-sm leading-6 text-white/65 sm:leading-7">
             {{ activePanel.description }}
           </p>
         </div>
@@ -194,11 +194,11 @@
         <component :is="activePanel.component" />
       </div>
 
-      <div class="grid gap-3 text-sm text-white/65 sm:grid-cols-3">
+      <div class="grid gap-2 text-sm text-white/65 sm:grid-cols-3 sm:gap-3">
         <article
           v-for="step in activePanel.steps"
           :key="step.title"
-          class="rounded-3xl border border-white/10 bg-white/5 p-4"
+          class="rounded-2xl border border-white/10 bg-white/5 p-3 sm:rounded-3xl sm:p-4"
         >
           <h3 class="text-sm font-semibold text-white">
             {{ step.title }}
@@ -213,10 +213,10 @@
 <style scoped>
   .home-tab-rail {
     display: grid;
-    gap: 0.75rem;
+    gap: 0.5rem;
     overflow-x: auto;
     overscroll-behavior-x: contain;
-    grid-auto-columns: minmax(18rem, 1fr);
+    grid-auto-columns: minmax(13.5rem, 78%);
     grid-auto-flow: column;
     scrollbar-width: none;
   }
@@ -227,6 +227,13 @@
 
   .home-tab-card {
     min-height: 100%;
+  }
+
+  @media (width >= 640px) {
+    .home-tab-rail {
+      gap: 0.75rem;
+      grid-auto-columns: minmax(16rem, 1fr);
+    }
   }
 
   @media (width >= 768px) {
