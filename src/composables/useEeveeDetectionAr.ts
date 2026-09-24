@@ -52,12 +52,16 @@ const IMAGE_EMBEDDER_MODEL_URL =
 
 const ANALYZE_INTERVAL_MS = 320;
 const DETECTED_ANALYZE_INTERVAL_MS = 1600;
-const DETECT_THRESHOLD = 0.75;
-const CLEAR_THRESHOLD = 0.7;
+const DETECT_THRESHOLD = 0.72;
+const CLEAR_THRESHOLD = 0.66;
 const DETECT_STREAK_TARGET = 2;
 const LOST_STREAK_TARGET = 4;
-const SCAN_COVERAGES = [0.34, 0.48] as const;
-const SCAN_POSITIONS = [0.3, 0.5, 0.7] as const;
+const REFERENCE_SCALES = [1.35, 1, 0.68] as const;
+const SCAN_LAYOUTS = [
+  { coverage: 0.46, positions: [0.32, 0.5, 0.68] },
+  { coverage: 0.72, positions: [0.4, 0.5, 0.6] },
+  { coverage: 1, positions: [0.5] },
+] as const;
 const EMBEDDER_CANVAS_SIZE = 224;
 
 let embedderLoaderPromise: Promise<MediaPipeImageEmbedder> | null = null;
@@ -142,10 +146,23 @@ function loadReferenceImage() {
 
 function drawReferenceImage(
   context: CanvasRenderingContext2D,
-  image: HTMLImageElement
+  image: HTMLImageElement,
+  scale: number
 ) {
-  context.clearRect(0, 0, EMBEDDER_CANVAS_SIZE, EMBEDDER_CANVAS_SIZE);
-  context.drawImage(image, 0, 0, EMBEDDER_CANVAS_SIZE, EMBEDDER_CANVAS_SIZE);
+  const drawSize = EMBEDDER_CANVAS_SIZE * scale;
+  const offset = (EMBEDDER_CANVAS_SIZE - drawSize) / 2;
+
+  context.fillStyle = "rgb(0, 0, 0)";
+  context.fillRect(0, 0, EMBEDDER_CANVAS_SIZE, EMBEDDER_CANVAS_SIZE);
+  context.drawImage(image, offset, offset, drawSize, drawSize);
+}
+
+function getBestSimilarity(sample: number[], references: number[][]) {
+  return references.reduce(
+    (bestScore, reference) =>
+      Math.max(bestScore, getCosineSimilarity(sample, reference)),
+    0
+  );
 }
 
 export function useEeveeDetectionAr({
@@ -164,7 +181,7 @@ export function useEeveeDetectionAr({
   let mediaStream: MediaStream | null = null;
   let loopTimerId = 0;
   let embedder: MediaPipeImageEmbedder | null = null;
-  let referenceEmbedding: number[] | null = null;
+  let referenceEmbeddings: number[][] | null = null;
   let detectStreak = 0;
   let lostStreak = 0;
 
@@ -181,26 +198,31 @@ export function useEeveeDetectionAr({
     detectionScore.value = 0;
   }
 
-  async function ensureReferenceEmbedding(
+  async function ensureReferenceEmbeddings(
     context: CanvasRenderingContext2D
-  ): Promise<number[]> {
-    if (referenceEmbedding) return referenceEmbedding;
+  ): Promise<number[][]> {
+    if (referenceEmbeddings) return referenceEmbeddings;
 
     const referenceImage = await loadReferenceImage();
-
-    drawReferenceImage(context, referenceImage);
-
     const loadedEmbedder = await ensureImageEmbedder();
-    const embedding = getEmbeddingVector(loadedEmbedder.embed(context.canvas));
+    const embeddings = REFERENCE_SCALES.flatMap((scale) => {
+      drawReferenceImage(context, referenceImage, scale);
 
-    if (!embedding) {
+      const embedding = getEmbeddingVector(
+        loadedEmbedder.embed(context.canvas)
+      );
+
+      return embedding ? [embedding] : [];
+    });
+
+    if (!embeddings.length) {
       throw new Error(i18n.global.t("eevee.state.loadError"));
     }
 
     embedder = loadedEmbedder;
-    referenceEmbedding = embedding;
+    referenceEmbeddings = embeddings;
 
-    return embedding;
+    return embeddings;
   }
 
   function drawSample(
@@ -250,14 +272,20 @@ export function useEeveeDetectionAr({
     canvas.width = EMBEDDER_CANVAS_SIZE;
     canvas.height = EMBEDDER_CANVAS_SIZE;
 
-    const loadedReferenceEmbedding = await ensureReferenceEmbedding(context);
+    const loadedReferenceEmbeddings = await ensureReferenceEmbeddings(context);
     const loadedEmbedder = embedder ?? (await ensureImageEmbedder());
     const samples: DetectionSample[] = [];
 
-    SCAN_COVERAGES.forEach((coverage) => {
-      SCAN_POSITIONS.forEach((centerY) => {
-        SCAN_POSITIONS.forEach((centerX) => {
-          const bounds = drawSample(context, video, coverage, centerX, centerY);
+    SCAN_LAYOUTS.forEach((layout) => {
+      layout.positions.forEach((centerY) => {
+        layout.positions.forEach((centerX) => {
+          const bounds = drawSample(
+            context,
+            video,
+            layout.coverage,
+            centerX,
+            centerY
+          );
           const sampleEmbedding = getEmbeddingVector(
             loadedEmbedder.embed(context.canvas)
           );
@@ -266,9 +294,9 @@ export function useEeveeDetectionAr({
 
           samples.push({
             ...bounds,
-            score: getCosineSimilarity(
+            score: getBestSimilarity(
               sampleEmbedding,
-              loadedReferenceEmbedding
+              loadedReferenceEmbeddings
             ),
           });
         });
@@ -398,7 +426,7 @@ export function useEeveeDetectionAr({
       canvas.width = EMBEDDER_CANVAS_SIZE;
       canvas.height = EMBEDDER_CANVAS_SIZE;
 
-      await ensureReferenceEmbedding(context);
+      await ensureReferenceEmbeddings(context);
       mediaStream = await requestRearCameraStream();
 
       video.srcObject = mediaStream;
@@ -429,7 +457,7 @@ export function useEeveeDetectionAr({
   onBeforeUnmount(() => {
     embedder?.close?.();
     embedder = null;
-    referenceEmbedding = null;
+    referenceEmbeddings = null;
     embedderLoaderPromise = null;
     void stop();
   });
