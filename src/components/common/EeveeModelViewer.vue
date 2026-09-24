@@ -18,6 +18,9 @@
     modelUrl: string;
   };
 
+  const MAX_PIXEL_RATIO = 1.5;
+  const MAX_MOTION_DELTA_SECONDS = 0.05;
+
   const props = defineProps<EeveeModelViewerProps>();
 
   const emit = defineEmits<{
@@ -34,8 +37,11 @@
   let modelGroup: Group | null = null;
   let modelPivotGroup: Group | null = null;
   let resizeObserver: ResizeObserver | null = null;
-  let animationFrameId = 0;
   let clock: Clock | null = null;
+  let isSceneActive = false;
+  let motionTime = 0;
+  let viewportWidth = 0;
+  let viewportHeight = 0;
   let modelBaseY = 0;
   let isCompactViewport = false;
   let modelFloatAmplitude = 0.08;
@@ -52,12 +58,18 @@
 
     if (!container || !renderer || !camera) return;
 
-    const { clientWidth, clientHeight } = container;
+    const width = Math.floor(container.clientWidth);
+    const height = Math.floor(container.clientHeight);
 
-    if (!clientWidth || !clientHeight) return;
+    if (!width || !height) return;
+    if (width === viewportWidth && height === viewportHeight) return;
 
-    renderer.setSize(clientWidth, clientHeight, true);
-    camera.aspect = clientWidth / clientHeight;
+    viewportWidth = width;
+    viewportHeight = height;
+
+    // CSS owns the canvas box / 畫布外框交給 CSS
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
     camera.updateProjectionMatrix();
 
     if (modelBoundsSize) {
@@ -118,6 +130,7 @@
 
     if (!container) return;
 
+    isSceneActive = true;
     scene = new Scene();
     scene.background = new Color("#090c14");
 
@@ -130,11 +143,9 @@
     renderer = new WebGLRenderer({
       alpha: false,
       antialias: true,
-      powerPreference: "high-performance",
+      powerPreference: "default",
     });
-    renderer.setPixelRatio(
-      Math.min(window.devicePixelRatio, isCompactViewport ? 1.5 : 2)
-    );
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
     renderer.domElement.style.display = "block";
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
@@ -157,10 +168,10 @@
     });
     resizeObserver.observe(container);
 
-    clock = new Clock();
-
     const loader = new GLTFLoader();
     const gltf = await loader.loadAsync(props.modelUrl);
+
+    if (!isSceneActive || !scene || !camera || !renderer) return;
 
     modelGroup = gltf.scene;
     modelBoundsSize = normalizeModel(modelGroup);
@@ -177,30 +188,37 @@
 
     isLoading.value = false;
 
+    clock = new Clock();
+    motionTime = 0;
+
     const renderFrame = () => {
-      if (!renderer || !scene || !camera || !modelPivotGroup || !clock) {
+      if (
+        !isSceneActive ||
+        !renderer ||
+        !scene ||
+        !camera ||
+        !modelPivotGroup ||
+        !clock
+      ) {
         return;
       }
 
-      const elapsedTime = clock.getElapsedTime();
+      const delta = Math.min(clock.getDelta(), MAX_MOTION_DELTA_SECONDS);
 
-      modelPivotGroup.rotation.y = elapsedTime * modelRotateSpeed;
+      motionTime += delta;
+      modelPivotGroup.rotation.y = motionTime * modelRotateSpeed;
       modelPivotGroup.position.y =
         modelBaseY +
-        Math.sin(elapsedTime * modelFloatSpeed) * modelFloatAmplitude;
+        Math.sin(motionTime * modelFloatSpeed) * modelFloatAmplitude;
 
       renderer.render(scene, camera);
-      animationFrameId = window.requestAnimationFrame(renderFrame);
     };
 
-    renderFrame();
+    renderer.setAnimationLoop(renderFrame);
   }
 
   function teardownScene() {
-    if (animationFrameId) {
-      window.cancelAnimationFrame(animationFrameId);
-      animationFrameId = 0;
-    }
+    isSceneActive = false;
 
     resizeObserver?.disconnect();
     resizeObserver = null;
@@ -221,7 +239,11 @@
       mesh.material?.dispose?.();
     });
 
-    renderer?.dispose();
+    if (renderer) {
+      renderer.setAnimationLoop(null);
+      renderer.dispose();
+    }
+
     containerElement.value?.replaceChildren();
 
     renderer = null;
@@ -230,6 +252,9 @@
     modelGroup = null;
     modelPivotGroup = null;
     clock = null;
+    motionTime = 0;
+    viewportWidth = 0;
+    viewportHeight = 0;
     modelBaseY = 0;
     modelBoundsSize = null;
   }
@@ -269,6 +294,9 @@
   .eevee-model-viewer {
     @apply relative h-full min-h-[18rem] w-full max-w-full overflow-hidden rounded-[20px];
     max-height: min(20rem, 78vw);
+
+    /* Isolate the turntable paint / 隔離轉盤繪製 */
+    contain: layout paint;
     background:
       radial-gradient(circle at top, rgb(255 244 213 / 42%), transparent 38%),
       linear-gradient(180deg, rgb(255 255 255 / 16%), rgb(12 14 22 / 90%));
@@ -277,6 +305,15 @@
   .eevee-model-viewer-canvas {
     @apply h-full w-full max-w-full;
     max-height: 100%;
+
+    /* Own compositor layer / 獨立合成層 */
+    transform: translateZ(0);
+  }
+
+  .eevee-model-viewer-canvas :deep(canvas) {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   .eevee-model-viewer-overlay {

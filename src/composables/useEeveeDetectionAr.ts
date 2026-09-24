@@ -15,9 +15,16 @@ type DetectionBounds = {
   height: number;
 };
 
-type DetectionSample = DetectionBounds & {
-  score: number;
+type SamplePoint = {
+  coverage: number;
+  centerX: number;
+  centerY: number;
 };
+
+type DetectionSample = DetectionBounds &
+  SamplePoint & {
+    score: number;
+  };
 
 type MediaPipeEmbedding = {
   floatEmbedding?: number[] | Float32Array;
@@ -165,6 +172,55 @@ function getBestSimilarity(sample: number[], references: number[][]) {
   );
 }
 
+function getScanPoints(
+  isConfirming: boolean,
+  trackedPoint: SamplePoint | null
+): SamplePoint[] {
+  if (!isConfirming) {
+    return SCAN_LAYOUTS.flatMap((layout) =>
+      layout.positions.flatMap((centerY) =>
+        layout.positions.map((centerX) => ({
+          coverage: layout.coverage,
+          centerX,
+          centerY,
+        }))
+      )
+    );
+  }
+
+  // Presence check while the model is showing / 模型顯示時只做在場確認
+  const tracked = trackedPoint ?? {
+    coverage: 0.72,
+    centerX: 0.5,
+    centerY: 0.5,
+  };
+  const fullFrame = { coverage: 1, centerX: 0.5, centerY: 0.5 };
+
+  if (
+    tracked.coverage === fullFrame.coverage &&
+    tracked.centerX === fullFrame.centerX &&
+    tracked.centerY === fullFrame.centerY
+  ) {
+    return [tracked];
+  }
+
+  return [tracked, fullFrame];
+}
+
+function yieldForRender(shouldPaint: boolean) {
+  return new Promise<void>((resolve) => {
+    if (!shouldPaint) {
+      window.setTimeout(resolve, 0);
+      return;
+    }
+
+    // Wait until the turntable has painted / 等轉盤畫完再繼續比對
+    window.requestAnimationFrame(() => {
+      window.setTimeout(resolve, 0);
+    });
+  });
+}
+
 export function useEeveeDetectionAr({
   captureCanvasElement,
   videoElement,
@@ -184,6 +240,8 @@ export function useEeveeDetectionAr({
   let referenceEmbeddings: number[][] | null = null;
   let detectStreak = 0;
   let lostStreak = 0;
+  let sessionGeneration = 0;
+  let trackedSamplePoint: SamplePoint | null = null;
 
   function setStatus(text: string, tone: "idle" | "active" | "error" = "idle") {
     statusText.value = text;
@@ -193,6 +251,7 @@ export function useEeveeDetectionAr({
   function resetDetectionState() {
     detectStreak = 0;
     lostStreak = 0;
+    trackedSamplePoint = null;
     isDetected.value = false;
     detectionBounds.value = null;
     detectionScore.value = 0;
@@ -262,48 +321,61 @@ export function useEeveeDetectionAr({
     } satisfies DetectionBounds;
   }
 
-  async function analyzeCurrentFrame() {
+  async function analyzeCurrentFrame(generation: number) {
     const video = videoElement.value;
     const canvas = captureCanvasElement.value;
     const context = canvas?.getContext("2d", { willReadFrequently: true });
 
     if (!video || !canvas || !context) return;
+    if (generation !== sessionGeneration || !isRunning.value) return;
 
     canvas.width = EMBEDDER_CANVAS_SIZE;
     canvas.height = EMBEDDER_CANVAS_SIZE;
 
     const loadedReferenceEmbeddings = await ensureReferenceEmbeddings(context);
+    if (generation !== sessionGeneration || !isRunning.value) return;
+
     const loadedEmbedder = embedder ?? (await ensureImageEmbedder());
+    if (generation !== sessionGeneration || !isRunning.value) return;
+
+    const shouldPaintModel = isDetected.value;
+    const scanPoints = getScanPoints(shouldPaintModel, trackedSamplePoint);
     const samples: DetectionSample[] = [];
 
-    SCAN_LAYOUTS.forEach((layout) => {
-      layout.positions.forEach((centerY) => {
-        layout.positions.forEach((centerX) => {
-          const bounds = drawSample(
-            context,
-            video,
-            layout.coverage,
-            centerX,
-            centerY
-          );
-          const sampleEmbedding = getEmbeddingVector(
-            loadedEmbedder.embed(context.canvas)
-          );
+    for (const scanPoint of scanPoints) {
+      if (generation !== sessionGeneration || !isRunning.value) return;
 
-          if (!sampleEmbedding) return;
+      await yieldForRender(shouldPaintModel);
 
-          samples.push({
-            ...bounds,
-            score: getBestSimilarity(
-              sampleEmbedding,
-              loadedReferenceEmbeddings
-            ),
-          });
-        });
+      if (generation !== sessionGeneration || !isRunning.value) return;
+
+      const bounds = drawSample(
+        context,
+        video,
+        scanPoint.coverage,
+        scanPoint.centerX,
+        scanPoint.centerY
+      );
+      const sampleEmbedding = getEmbeddingVector(
+        loadedEmbedder.embed(context.canvas)
+      );
+
+      if (!sampleEmbedding) continue;
+
+      samples.push({
+        ...bounds,
+        ...scanPoint,
+        score: getBestSimilarity(sampleEmbedding, loadedReferenceEmbeddings),
       });
-    });
+    }
 
-    if (!samples.length) return;
+    if (
+      !samples.length ||
+      generation !== sessionGeneration ||
+      !isRunning.value
+    ) {
+      return;
+    }
 
     const bestSample = samples.reduce((best, current) =>
       current.score > best.score ? current : best
@@ -314,6 +386,11 @@ export function useEeveeDetectionAr({
     if (bestSample.score >= DETECT_THRESHOLD) {
       detectStreak += 1;
       lostStreak = 0;
+      trackedSamplePoint = {
+        coverage: bestSample.coverage,
+        centerX: bestSample.centerX,
+        centerY: bestSample.centerY,
+      };
     } else if (bestSample.score <= CLEAR_THRESHOLD) {
       lostStreak += 1;
       detectStreak = 0;
@@ -326,6 +403,7 @@ export function useEeveeDetectionAr({
     if (isDetected.value && lostStreak >= LOST_STREAK_TARGET) {
       isDetected.value = false;
       detectionBounds.value = null;
+      trackedSamplePoint = null;
     }
 
     if (isDetected.value) {
@@ -365,6 +443,7 @@ export function useEeveeDetectionAr({
 
   async function runLoop() {
     const video = videoElement.value;
+    const generation = sessionGeneration;
 
     if (!isRunning.value || !video) return;
 
@@ -374,8 +453,10 @@ export function useEeveeDetectionAr({
     }
 
     try {
-      await analyzeCurrentFrame();
+      await analyzeCurrentFrame(generation);
     } catch (error) {
+      if (generation !== sessionGeneration) return;
+
       overlayMessage.value = i18n.global.t("eevee.state.cameraError", {
         message: getErrorMessage(error),
       });
@@ -384,10 +465,13 @@ export function useEeveeDetectionAr({
       return;
     }
 
+    if (generation !== sessionGeneration || !isRunning.value) return;
+
     scheduleNextAnalyze();
   }
 
   async function teardownSession() {
+    sessionGeneration += 1;
     isRunning.value = false;
 
     if (loopTimerId) {

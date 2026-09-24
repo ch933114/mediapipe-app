@@ -273,11 +273,18 @@
   }
 
   .eevee-detection-stage-card {
-    @apply grid gap-5 overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(255,196,118,0.12),rgba(255,255,255,0.04))] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur sm:p-6 lg:grid-cols-[minmax(16rem,22rem)_1fr];
+    @apply relative grid gap-5 overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(255,196,118,0.12),rgba(255,255,255,0.04))] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.28)] sm:p-6 lg:grid-cols-[minmax(16rem,22rem)_1fr];
+  }
+
+  .eevee-detection-stage-card::before {
+    @apply pointer-events-none absolute inset-0 backdrop-blur;
+    z-index: 0;
+    border-radius: inherit;
+    content: "";
   }
 
   .eevee-detection-stage-model-shell {
-    @apply relative w-full self-start overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(255,218,170,0.26),rgba(18,20,29,0.88))] p-3;
+    @apply relative z-[1] w-full self-start overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(255,218,170,0.26),rgba(18,20,29,0.88))] p-3;
     aspect-ratio: 1 / 1;
     min-height: 18rem;
   }
@@ -293,7 +300,7 @@
   }
 
   .eevee-detection-stage-details {
-    @apply flex flex-col gap-4;
+    @apply relative z-[1] flex flex-col gap-4;
   }
 
   .eevee-detection-stage-kicker {

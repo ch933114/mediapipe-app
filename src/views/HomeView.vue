@@ -137,7 +137,9 @@
 </script>
 
 <template>
-  <main class="min-h-screen bg-[#05070d] px-0 py-3 text-white sm:px-6 sm:py-8 lg:px-8">
+  <main
+    class="min-h-screen bg-[#05070d] px-0 py-3 text-white sm:px-6 sm:py-8 lg:px-8"
+  >
     <section
       class="mx-auto flex w-full max-w-6xl flex-col gap-4 border-y border-white/10 bg-white/[0.03] px-3 py-4 sm:gap-8 sm:rounded-[32px] sm:border sm:px-8 sm:py-8 sm:shadow-[0_30px_120px_rgba(0,0,0,0.35)] sm:backdrop-blur"
     >
@@ -152,7 +154,9 @@
         >
           {{ t("common.appTitle") }}
         </h1>
-        <p class="max-w-3xl text-sm leading-6 text-white/70 sm:text-base sm:leading-7">
+        <p
+          class="max-w-3xl text-sm leading-6 text-white/70 sm:text-base sm:leading-7"
+        >
           {{ t("home.lead") }}
         </p>
       </div>
@@ -175,13 +179,17 @@
           @click="activeTab = tabItem.key"
         >
           <p class="text-base font-semibold text-white">{{ tabItem.title }}</p>
-          <p class="mt-1.5 text-sm leading-5 text-white/65 sm:mt-2 sm:leading-6">
+          <p
+            class="mt-1.5 text-sm leading-5 text-white/65 sm:mt-2 sm:leading-6"
+          >
             {{ tabItem.description }}
           </p>
         </button>
       </div>
 
-      <div class="rounded-2xl border border-white/10 bg-black/15 p-3 sm:rounded-[28px] sm:p-6">
+      <div
+        class="rounded-2xl border border-white/10 bg-black/15 p-3 sm:rounded-[28px] sm:p-6"
+      >
         <div class="mb-3 flex flex-col gap-1 sm:mb-6 sm:gap-2">
           <h2 class="text-xl font-semibold text-white sm:text-2xl">
             {{ activePanel.title }}
