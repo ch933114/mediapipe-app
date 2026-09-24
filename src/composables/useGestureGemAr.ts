@@ -20,6 +20,7 @@ type HandsWindow = Window &
   };
 
 type HandTrackingState = {
+  fistMissSince: number;
   fistSince: number;
   phase: HandPhase;
   spawnAt: number;
@@ -27,7 +28,10 @@ type HandTrackingState = {
 
 const FINGER_TIPS = [4, 8, 12, 16, 20] as const;
 const FINGER_MCP = [2, 5, 9, 13, 17] as const;
+const FIST_ENTER_BENT_COUNT = 4;
+const FIST_EXIT_BENT_COUNT = 2;
 const FIST_HOLD_MS = 2000;
+const FIST_MISS_GRACE_MS = 400;
 const READY_TIMEOUT_MS = 3000;
 const GEM_SCALE_MIN = 0.9;
 const GEM_SCALE_MAX = 1.8;
@@ -72,6 +76,7 @@ function loadHandsScript() {
 
 function createInitialHandState(): HandTrackingState {
   return {
+    fistMissSince: 0,
     fistSince: 0,
     phase: "idle",
     spawnAt: 0,
@@ -88,7 +93,7 @@ function getErrorMessage(error: unknown) {
   return i18n.global.t("gesture.state.loadError");
 }
 
-function isFist(landmarks: NormalizedLandmark[]) {
+function countBentFingers(landmarks: NormalizedLandmark[]) {
   let bentCount = 0;
 
   for (
@@ -107,7 +112,7 @@ function isFist(landmarks: NormalizedLandmark[]) {
     if (tip.y > mcp.y) bentCount += 1;
   }
 
-  return bentCount >= 4;
+  return bentCount;
 }
 
 function isOpenHand(landmarks: NormalizedLandmark[]) {
@@ -166,6 +171,33 @@ export function useGestureGemAr({
     statusTone.value = tone;
   }
 
+  // Paused fist charge / 暫停中的握拳蓄力
+  function fistElapsed(now: number) {
+    const endAt = handState.fistMissSince > 0 ? handState.fistMissSince : now;
+
+    return Math.max(0, endAt - handState.fistSince);
+  }
+
+  function beginFistMiss(now: number) {
+    if (handState.fistMissSince === 0) {
+      handState.fistMissSince = now;
+    }
+  }
+
+  function resumeFistHold(now: number) {
+    if (handState.fistMissSince === 0) return;
+
+    handState.fistSince += now - handState.fistMissSince;
+    handState.fistMissSince = 0;
+  }
+
+  function isFistMissExpired(now: number) {
+    return (
+      handState.fistMissSince > 0 &&
+      now - handState.fistMissSince >= FIST_MISS_GRACE_MS
+    );
+  }
+
   function resetInteractionState() {
     handState = createInitialHandState();
     fistProgress.value = 0;
@@ -201,7 +233,7 @@ export function useGestureGemAr({
     }
 
     if (handState.phase === "fisting") {
-      const elapsed = now - handState.fistSince;
+      const elapsed = fistElapsed(now);
       const seconds = (Math.floor(elapsed / 100) / 10).toFixed(1);
 
       fistProgress.value = clamp(elapsed / FIST_HOLD_MS, 0, 1);
@@ -230,24 +262,62 @@ export function useGestureGemAr({
     const landmarks = results.multiHandLandmarks?.[0];
 
     if (!landmarks) {
-      resetInteractionState();
-      setStatus(i18n.global.t("gesture.state.idle"), "idle");
+      if (handState.phase === "idle") {
+        setStatus(i18n.global.t("gesture.state.idle"), "idle");
+        return;
+      }
+
+      beginFistMiss(now);
+
+      if (isFistMissExpired(now)) {
+        resetInteractionState();
+        setStatus(i18n.global.t("gesture.state.idle"), "idle");
+        return;
+      }
+
+      if (handState.phase === "showing") {
+        setStatus(i18n.global.t("gesture.state.showing"), "active");
+      } else if (handState.phase === "ready") {
+        setStatus(i18n.global.t("gesture.state.ready"), "active");
+      } else {
+        setStatus(i18n.global.t("gesture.state.holdPrompt"), "active");
+      }
+
+      updateHintForPhase(now);
       return;
     }
 
-    const fistDetected = isFist(landmarks);
+    if (handState.phase === "ready" || handState.phase === "showing") {
+      resumeFistHold(now);
+    }
+
+    const bentCount = countBentFingers(landmarks);
+    const isFistEntered = bentCount >= FIST_ENTER_BENT_COUNT;
+    const isFistKept = bentCount > FIST_EXIT_BENT_COUNT;
     const openDetected = isOpenHand(landmarks);
 
     if (handState.phase === "idle") {
-      if (fistDetected) {
+      if (isFistEntered) {
         handState.phase = "fisting";
         handState.fistSince = now;
+        handState.fistMissSince = 0;
       }
     } else if (handState.phase === "fisting") {
-      if (!fistDetected) {
+      if (openDetected) {
         handState = createInitialHandState();
-      } else if (now - handState.fistSince >= FIST_HOLD_MS) {
-        handState.phase = "ready";
+      } else if (isFistKept) {
+        resumeFistHold(now);
+
+        if (fistElapsed(now) >= FIST_HOLD_MS) {
+          handState.phase = "ready";
+          handState.fistMissSince = 0;
+        }
+      } else {
+        beginFistMiss(now);
+
+        if (isFistMissExpired(now)) {
+          handState = createInitialHandState();
+        }
       }
     } else if (handState.phase === "ready") {
       if (openDetected) {
@@ -258,7 +328,7 @@ export function useGestureGemAr({
       } else if (now - handState.fistSince > FIST_HOLD_MS + READY_TIMEOUT_MS) {
         handState = createInitialHandState();
       }
-    } else if (handState.phase === "showing" && fistDetected) {
+    } else if (handState.phase === "showing" && isFistEntered) {
       handState = createInitialHandState();
       isGemVisible.value = false;
     }
