@@ -9,7 +9,7 @@
       "gesture": "Gesture Gem",
       "dance": "Dance Bear",
       "eevee": "Eevee Scan",
-      "smile": "Smile Devil Mask"
+      "smile": "Smile Devil Warp"
     },
     "panels": {
       "gesture": {
@@ -25,8 +25,8 @@
         "description": "Point a similar object to `eevee.png` at the camera to reveal an auto-rotating Eevee model and a short Pokédex summary."
       },
       "smile": {
-        "title": "Smile-triggered devil mask",
-        "description": "When Face Mesh detects a smile, a devil mask appears and follows your face."
+        "title": "Smile-triggered devil warp",
+        "description": "When Face Mesh detects a smile, the face in the camera is warped into a devil."
       }
     },
     "steps": {
@@ -79,11 +79,11 @@
         },
         "step2": {
           "title": "2. Smile at the camera",
-          "description": "Smile and hold it briefly while Face Mesh analyzes your facial landmarks."
+          "description": "Smile and hold it. The face warps further as the smile grows."
         },
         "step3": {
-          "title": "3. Wear the devil mask",
-          "description": "The mask follows your face position and angle as you move."
+          "title": "3. The face becomes a devil",
+          "description": "The forehead stretches into horns, the eyes sharpen, the chin points, and the skin shifts dark red."
         }
       }
     }
@@ -175,15 +175,15 @@
     "stop": "Stop Detection",
     "score": "Smile score",
     "instructions": {
-      "detect": "Smile at the rear camera and the devil mask appears when detected.",
+      "detect": "Smile at the rear camera. A bigger smile warps the face further into a devil.",
       "camera": "The rear camera is preferred, with fallback to another available camera."
     },
     "state": {
       "booting": "Starting camera...",
       "idle": "Waiting for a face",
       "tracking": "Face detected. Smile at the camera",
-      "detected": "Smile detected. Devil mask enabled",
-      "maskOn": "Devil mask active",
+      "detected": "Smile detected. The face is turning into a devil",
+      "transformed": "Devil transformation active",
       "smilePrompt": "Smile at the camera",
       "cameraPrompt": "Tap the button below to start the camera",
       "cameraLoading": "Connecting the rear camera and face model...",

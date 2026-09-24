@@ -1,14 +1,19 @@
-import type { CSSProperties, Ref } from "vue";
+import type { Ref } from "vue";
 import { i18n } from "@/i18n";
+import {
+  createDevilFaceWarp,
+  type DevilFaceWarp,
+  type NormalizedLandmark,
+} from "@/utils/devilFaceWarp";
 import { requestRearCameraStream } from "@/utils/requestRearCameraStream";
 
 type UseSmileDevilMaskArOptions = {
   stageElement: Ref<HTMLElement | null>;
   videoElement: Ref<HTMLVideoElement | null>;
+  canvasElement: Ref<HTMLCanvasElement | null>;
 };
 
-type FaceLandmark = { x: number; y: number };
-type FaceResults = { multiFaceLandmarks?: FaceLandmark[][] };
+type FaceResults = { multiFaceLandmarks?: NormalizedLandmark[][] };
 type FaceMeshInstance = {
   close?: () => Promise<void> | void;
   onResults: (callback: (results: FaceResults) => void) => void;
@@ -21,7 +26,8 @@ type FaceMeshConstructor = new (config: {
 type FaceMeshWindow = Window &
   typeof globalThis & { FaceMesh?: FaceMeshConstructor };
 
-const SMILE_THRESHOLD = 0.38;
+const MORPH_SCORE_START = 0.33;
+const MORPH_SCORE_END = 0.6;
 const FACE_MESH_VERSION = "0.4.1633559619";
 const FACE_MESH_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@${FACE_MESH_VERSION}/face_mesh.js`;
 const FACE_MESH_PATH = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@${FACE_MESH_VERSION}/`;
@@ -31,17 +37,25 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function getDistance(first: FaceLandmark, second: FaceLandmark) {
+function getDistance(first: NormalizedLandmark, second: NormalizedLandmark) {
   return Math.hypot(first.x - second.x, first.y - second.y);
 }
 
-function getSmileScore(landmarks: FaceLandmark[]) {
+function getSmileScore(landmarks: NormalizedLandmark[]) {
   const mouthWidth = getDistance(landmarks[61], landmarks[291]);
   const faceWidth = getDistance(landmarks[234], landmarks[454]);
   const mouthHeight = getDistance(landmarks[13], landmarks[14]);
 
   if (!faceWidth) return 0;
   return mouthWidth / faceWidth + (mouthHeight / faceWidth) * 0.35;
+}
+
+function getMorphTarget(score: number) {
+  return clamp(
+    (score - MORPH_SCORE_START) / (MORPH_SCORE_END - MORPH_SCORE_START),
+    0,
+    1
+  );
 }
 
 function loadFaceMeshScript() {
@@ -78,27 +92,29 @@ function loadFaceMeshScript() {
 export function useSmileDevilMaskAr({
   stageElement,
   videoElement,
+  canvasElement,
 }: UseSmileDevilMaskArOptions) {
   const isRunning = ref(false);
   const isStarting = ref(false);
   const isSmiling = ref(false);
+  const hasFaceWarp = ref(false);
   const smileScore = ref(0);
   const overlayMessage = ref(i18n.global.t("smile.state.cameraPrompt"));
   const statusText = ref(i18n.global.t("smile.state.idle"));
   const statusTone = ref<"idle" | "active" | "error">("idle");
-  const maskStyle = ref<CSSProperties>({
-    left: "50%",
-    top: "50%",
-    width: "0px",
-    height: "0px",
-    transform: "translate(-50%, -50%)",
-  });
 
   let faceMeshInstance: FaceMeshInstance | null = null;
   let mediaStream: MediaStream | null = null;
-  let loopFrameId = 0;
+  let detectFrameId = 0;
+  let renderFrameId = 0;
+  let faceWarp: DevilFaceWarp | null = null;
+  let smoothedLandmarks: NormalizedLandmark[] | null = null;
+  let latestScore = 0;
+  let morphStrength = 0;
+  let faceVisible = false;
 
   function setStatus(text: string, tone: "idle" | "active" | "error" = "idle") {
+    if (statusText.value === text && statusTone.value === tone) return;
     statusText.value = text;
     statusTone.value = tone;
   }
@@ -106,83 +122,108 @@ export function useSmileDevilMaskAr({
   function resetTrackingState() {
     isSmiling.value = false;
     smileScore.value = 0;
-    maskStyle.value = {
-      left: "50%",
-      top: "50%",
-      width: "0px",
-      height: "0px",
-      transform: "translate(-50%, -50%)",
-    };
+    smoothedLandmarks = null;
+    latestScore = 0;
+    morphStrength = 0;
+    faceVisible = false;
   }
 
-  function updateMask(landmarks: FaceLandmark[]) {
-    const stage = stageElement.value;
-    const leftEye = landmarks[33];
-    const rightEye = landmarks[263];
-    const forehead = landmarks[10];
-    const chin = landmarks[152];
-    const faceLeft = landmarks[234];
-    const faceRight = landmarks[454];
-    if (
-      !stage ||
-      !leftEye ||
-      !rightEye ||
-      !forehead ||
-      !chin ||
-      !faceLeft ||
-      !faceRight
-    )
+  function smoothLandmarks(next: NormalizedLandmark[]) {
+    if (!smoothedLandmarks || smoothedLandmarks.length !== next.length) {
+      smoothedLandmarks = next.map((point) => ({ x: point.x, y: point.y }));
       return;
+    }
 
-    const faceWidth = getDistance(faceLeft, faceRight) * stage.clientWidth;
-    const faceHeight = getDistance(forehead, chin) * stage.clientHeight;
-    const centerX = ((faceLeft.x + faceRight.x) / 2) * stage.clientWidth;
-    const centerY = ((forehead.y + chin.y) / 2) * stage.clientHeight;
-    const rotation =
-      (Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * 180) /
-      Math.PI;
-
-    maskStyle.value = {
-      left: `${clamp(centerX, 0, stage.clientWidth)}px`,
-      top: `${clamp(centerY, 0, stage.clientHeight)}px`,
-      width: `${faceWidth * 1.35}px`,
-      height: `${faceHeight * 1.12}px`,
-      transform: `translate(-50%, -45%) rotate(${rotation}deg)`,
-    };
+    for (let index = 0; index < next.length; index += 1) {
+      const current = smoothedLandmarks[index];
+      const point = next[index];
+      if (!current || !point) continue;
+      current.x += (point.x - current.x) * 0.55;
+      current.y += (point.y - current.y) * 0.55;
+    }
   }
 
   function onResults(results: FaceResults) {
     const landmarks = results.multiFaceLandmarks?.[0];
     if (!landmarks) {
-      resetTrackingState();
-      setStatus(i18n.global.t("smile.state.idle"));
+      faceVisible = false;
       return;
     }
 
-    const score = getSmileScore(landmarks);
-    smileScore.value = Math.round(clamp(score / 0.65, 0, 1) * 100);
-    isSmiling.value = score >= SMILE_THRESHOLD;
-    updateMask(landmarks);
-    setStatus(
-      isSmiling.value
-        ? i18n.global.t("smile.state.detected")
-        : i18n.global.t("smile.state.tracking"),
-      isSmiling.value ? "active" : "idle"
-    );
+    faceVisible = true;
+    smoothLandmarks(landmarks);
+    latestScore = getSmileScore(landmarks);
+    smileScore.value = Math.round(clamp(latestScore / 0.65, 0, 1) * 100);
   }
 
-  async function runLoop() {
+  function renderFrame() {
+    if (!isRunning.value) return;
+
+    const target = faceVisible ? getMorphTarget(latestScore) : 0;
+    morphStrength += (target - morphStrength) * 0.12;
+    if (Math.abs(target - morphStrength) < 0.002) morphStrength = target;
+    isSmiling.value = morphStrength >= 0.28;
+
+    const stage = stageElement.value;
+    const video = videoElement.value;
+    if (
+      faceWarp &&
+      stage &&
+      video &&
+      stage.clientWidth > 0 &&
+      stage.clientHeight > 0
+    ) {
+      const landmarksForWarp =
+        smoothedLandmarks && (faceVisible || morphStrength > 0.01)
+          ? smoothedLandmarks
+          : null;
+      faceWarp.resize(stage.clientWidth, stage.clientHeight);
+      faceWarp.render({
+        video,
+        landmarks: landmarksForWarp,
+        morph: morphStrength,
+        timeMs: performance.now(),
+      });
+    }
+
+    if (!faceVisible && morphStrength < 0.05) {
+      smileScore.value = 0;
+      setStatus(i18n.global.t("smile.state.idle"));
+    } else if (morphStrength >= 0.28) {
+      setStatus(i18n.global.t("smile.state.detected"), "active");
+    } else if (faceVisible) {
+      setStatus(i18n.global.t("smile.state.tracking"));
+    }
+
+    renderFrameId = window.requestAnimationFrame(renderFrame);
+  }
+
+  async function detectLoop() {
     const video = videoElement.value;
     if (!isRunning.value || !faceMeshInstance || !video) return;
-    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA)
-      await faceMeshInstance.send({ image: video });
-    loopFrameId = window.requestAnimationFrame(() => void runLoop());
+    try {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA)
+        await faceMeshInstance.send({ image: video });
+    } catch {
+      if (!isRunning.value) return;
+    }
+    if (!isRunning.value) return;
+    detectFrameId = window.requestAnimationFrame(() => void detectLoop());
+  }
+
+  function ensureFaceWarp() {
+    const canvas = canvasElement.value;
+    if (!canvas) return;
+    faceWarp ??= createDevilFaceWarp(canvas);
+    hasFaceWarp.value = Boolean(faceWarp);
   }
 
   async function teardownSession() {
     isRunning.value = false;
-    if (loopFrameId) window.cancelAnimationFrame(loopFrameId);
-    loopFrameId = 0;
+    if (detectFrameId) window.cancelAnimationFrame(detectFrameId);
+    if (renderFrameId) window.cancelAnimationFrame(renderFrameId);
+    detectFrameId = 0;
+    renderFrameId = 0;
     mediaStream?.getTracks().forEach((track) => track.stop());
     mediaStream = null;
     const video = videoElement.value;
@@ -192,6 +233,7 @@ export function useSmileDevilMaskAr({
     }
     if (faceMeshInstance?.close) await faceMeshInstance.close();
     faceMeshInstance = null;
+    faceWarp?.clear();
     resetTrackingState();
   }
 
@@ -220,11 +262,13 @@ export function useSmileDevilMaskAr({
         minTrackingConfidence: 0.6,
       });
       faceMeshInstance.onResults(onResults);
+      ensureFaceWarp();
       resetTrackingState();
       isRunning.value = true;
       overlayMessage.value = "";
       setStatus(i18n.global.t("smile.state.tracking"));
-      await runLoop();
+      renderFrameId = window.requestAnimationFrame(renderFrame);
+      await detectLoop();
     } catch (error) {
       await teardownSession();
       const message =
@@ -246,13 +290,18 @@ export function useSmileDevilMaskAr({
     setStatus(i18n.global.t("smile.state.idle"));
   }
 
-  onBeforeUnmount(() => void stop());
+  onBeforeUnmount(() => {
+    void stop();
+    faceWarp?.destroy();
+    faceWarp = null;
+    hasFaceWarp.value = false;
+  });
 
   return {
+    hasFaceWarp,
     isRunning,
     isStarting,
     isSmiling,
-    maskStyle,
     overlayMessage,
     smileScore,
     start,

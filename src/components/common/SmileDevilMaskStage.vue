@@ -5,18 +5,19 @@
   const { t } = useLocale();
   const stageElement = ref<HTMLElement | null>(null);
   const videoElement = ref<HTMLVideoElement | null>(null);
+  const canvasElement = ref<HTMLCanvasElement | null>(null);
   const {
+    hasFaceWarp,
     isRunning,
     isStarting,
     isSmiling,
-    maskStyle,
     overlayMessage,
     smileScore,
     start,
     statusText,
     statusTone,
     stop,
-  } = useSmileDevilMaskAr({ stageElement, videoElement });
+  } = useSmileDevilMaskAr({ stageElement, videoElement, canvasElement });
 
   const statusClassName = computed(() => ({
     "smile-devil-stage-status": true,
@@ -31,29 +32,24 @@
       <video
         ref="videoElement"
         class="smile-devil-stage-video"
+        :class="{ 'opacity-0': hasFaceWarp }"
         autoplay
         muted
         playsinline
       />
+      <canvas
+        ref="canvasElement"
+        class="smile-devil-stage-canvas"
+        aria-hidden="true"
+      />
       <div v-if="overlayMessage" class="smile-devil-stage-overlay">
         {{ overlayMessage }}
       </div>
-      <div
-        v-if="isSmiling"
-        class="smile-devil-mask"
-        :style="maskStyle"
-        aria-hidden="true"
-      >
-        <span class="smile-devil-mask-horn smile-devil-mask-horn-left" />
-        <span class="smile-devil-mask-horn smile-devil-mask-horn-right" />
-        <span class="smile-devil-mask-eye smile-devil-mask-eye-left" />
-        <span class="smile-devil-mask-eye smile-devil-mask-eye-right" />
-        <span class="smile-devil-mask-fang smile-devil-mask-fang-left" />
-        <span class="smile-devil-mask-fang smile-devil-mask-fang-right" />
-      </div>
       <div class="smile-devil-stage-hud">
         <span>{{
-          isSmiling ? t("smile.state.maskOn") : t("smile.state.smilePrompt")
+          isSmiling
+            ? t("smile.state.transformed")
+            : t("smile.state.smilePrompt")
         }}</span>
         <span>{{ t("smile.score") }} {{ smileScore }}%</span>
       </div>
@@ -98,6 +94,10 @@
     @apply absolute inset-0 h-full w-full object-cover;
   }
 
+  .smile-devil-stage-canvas {
+    @apply pointer-events-none absolute inset-0 z-10 h-full w-full;
+  }
+
   .smile-devil-stage-overlay {
     @apply absolute inset-0 z-20 flex items-center justify-center bg-black/65 px-6 text-center text-sm font-medium text-white;
   }
@@ -136,90 +136,6 @@
 
   .smile-devil-stage-info {
     @apply rounded-[24px] border border-white/10 bg-white/5 px-5 py-4 text-sm leading-7 text-white/70;
-  }
-
-  .smile-devil-mask {
-    position: absolute;
-    z-index: 15;
-    pointer-events: none;
-    border: 3px solid rgb(239 68 68 / 90%);
-    border-radius: 48% 48% 42% 42%;
-    background: radial-gradient(
-      ellipse at 50% 38%,
-      rgb(127 29 29 / 78%),
-      rgb(30 5 12 / 96%) 72%
-    );
-    box-shadow:
-      0 0 24px rgb(239 68 68 / 48%),
-      inset 0 -18px 30px rgb(0 0 0 / 42%);
-    animation: devil-mask-in 260ms ease-out;
-  }
-
-  .smile-devil-mask-horn {
-    position: absolute;
-    top: -30%;
-    width: 28%;
-    height: 46%;
-    background: #991b1b;
-    clip-path: polygon(50% 0, 100% 100%, 0 100%);
-    filter: drop-shadow(0 0 5px rgb(239 68 68 / 70%));
-  }
-
-  .smile-devil-mask-horn-left {
-    left: 3%;
-    transform: rotate(-22deg);
-  }
-
-  .smile-devil-mask-horn-right {
-    right: 3%;
-    transform: rotate(22deg);
-  }
-
-  .smile-devil-mask-eye {
-    position: absolute;
-    top: 42%;
-    width: 19%;
-    height: 7%;
-    background: #fde68a;
-    clip-path: polygon(0 50%, 100% 0, 82% 100%);
-    box-shadow: 0 0 10px #fca5a5;
-  }
-
-  .smile-devil-mask-eye-left {
-    left: 19%;
-  }
-
-  .smile-devil-mask-eye-right {
-    right: 19%;
-    transform: scaleX(-1);
-  }
-
-  .smile-devil-mask-fang {
-    position: absolute;
-    bottom: 15%;
-    width: 9%;
-    height: 18%;
-    background: #fff7ed;
-    clip-path: polygon(0 0, 100% 0, 50% 100%);
-  }
-
-  .smile-devil-mask-fang-left {
-    left: 31%;
-  }
-
-  .smile-devil-mask-fang-right {
-    right: 31%;
-  }
-
-  @keyframes devil-mask-in {
-    from {
-      opacity: 0;
-      transform: translate(-50%, -45%) scale(0.82);
-    }
-
-    to {
-      opacity: 1;
-    }
   }
 
   @media (width <= 640px) {

@@ -9,7 +9,7 @@
       "gesture": "手勢寶石",
       "dance": "跳舞小熊",
       "eevee": "伊布辨識",
-      "smile": "微笑惡魔面具"
+      "smile": "微笑惡魔變臉"
     },
     "panels": {
       "gesture": {
@@ -25,8 +25,8 @@
         "description": "將和 `eevee.png` 相似的物件對準鏡頭，系統會顯示自動旋轉的伊布模型與基本資料。"
       },
       "smile": {
-        "title": "微笑觸發的惡魔面具",
-        "description": "當 Face Mesh 偵測到你正在微笑時，畫面會自動在臉上戴上惡魔面具。"
+        "title": "微笑觸發的惡魔變臉",
+        "description": "當 Face Mesh 偵測到你正在微笑時，會把鏡頭裡的臉即時扭曲成惡魔。"
       }
     },
     "steps": {
@@ -79,11 +79,11 @@
         },
         "step2": {
           "title": "2. 對鏡頭微笑",
-          "description": "嘴角張開並保持微笑，Face Mesh 會即時分析臉部特徵。"
+          "description": "嘴角張開並保持微笑，笑容越明顯，臉就會越往惡魔的方向扭曲。"
         },
         "step3": {
-          "title": "3. 戴上惡魔面具",
-          "description": "偵測到笑容後，惡魔面具會跟著臉部位置與角度移動。"
+          "title": "3. 臉部變成惡魔",
+          "description": "額頭會被拉出雙角，眼睛變銳、下巴變尖，膚色也會染上暗紅色。"
         }
       }
     }
@@ -175,15 +175,15 @@
     "stop": "停止偵測",
     "score": "笑容分數",
     "instructions": {
-      "detect": "對著後置鏡頭微笑，偵測到笑容後就會戴上惡魔面具。",
+      "detect": "對著後置鏡頭微笑，笑容越明顯，臉就會越扭曲成惡魔。",
       "camera": "系統會優先使用後置鏡頭，若裝置不支援才會退回其他可用鏡頭。"
     },
     "state": {
       "booting": "正在啟動相機...",
       "idle": "等待臉部進入畫面",
       "tracking": "已偵測到臉部，請微笑",
-      "detected": "偵測到笑容，惡魔面具已戴上",
-      "maskOn": "惡魔面具啟用中",
+      "detected": "偵測到笑容，臉部正在變成惡魔",
+      "transformed": "惡魔變身中",
       "smilePrompt": "請對鏡頭微笑",
       "cameraPrompt": "點擊下方按鈕啟動相機",
       "cameraLoading": "正在連線後置鏡頭與臉部模型...",
