@@ -66,11 +66,13 @@ const CONNECTIONS = [
 ] as const;
 const POSE_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js";
 const VISIBILITY_THRESHOLD = 0.5;
-const DANCE_MOTION_THRESHOLD = 0.018;
-const DANCE_AVERAGE_THRESHOLD = 0.012;
-const DANCE_SAMPLE_WINDOW = 24;
-const DANCE_MIN_SAMPLE_COUNT = 12;
-const DANCE_ACTIVE_SAMPLE_TARGET = 8;
+const PLACEMENT_VISIBILITY_THRESHOLD = 0.15;
+const DANCE_MOTION_THRESHOLD = 0.012;
+const DANCE_AVERAGE_THRESHOLD = 0.008;
+const DANCE_SAMPLE_WINDOW = 18;
+const DANCE_MIN_SAMPLE_COUNT = 8;
+const DANCE_ACTIVE_SAMPLE_TARGET = 5;
+const BEAR_HOLD_MS = 900;
 
 let poseScriptLoader: Promise<void> | null = null;
 
@@ -136,9 +138,15 @@ function getVisiblePoint(landmarks: PoseLandmark[], index: number) {
   return point;
 }
 
-function getPersonBounds(landmarks: PoseLandmark[]) {
+function getPersonBounds(
+  landmarks: PoseLandmark[],
+  minVisibility = VISIBILITY_THRESHOLD
+) {
   const visiblePoints = landmarks.filter(
-    (point) => (point.visibility ?? 0) >= VISIBILITY_THRESHOLD
+    (point) =>
+      Number.isFinite(point.x) &&
+      Number.isFinite(point.y) &&
+      (point.visibility ?? 0) >= minVisibility
   );
 
   if (!visiblePoints.length) return null;
@@ -185,6 +193,8 @@ export function useDanceDetectionAr({
   let activeSamples = 0;
   let cooldownUntil = 0;
   let previousPose: Array<{ x: number; y: number } | null> | null = null;
+  let lastPersonBounds: PersonBounds | null = null;
+  let bearsVisibleUntil = 0;
   const motionSamples: number[] = [];
 
   function setStatus(text: string, tone: "idle" | "active" | "error" = "idle") {
@@ -215,8 +225,19 @@ export function useDanceDetectionAr({
     motionSamples.length = 0;
     activeSamples = 0;
     isDancing.value = false;
+    lastPersonBounds = null;
+    bearsVisibleUntil = 0;
     bearPlacements.value = [];
     clearPopup();
+  }
+
+  // Bear anchor bounds / 小熊定位範圍
+  function resolvePersonBounds(landmarks: PoseLandmark[]) {
+    return (
+      getPersonBounds(landmarks) ??
+      getPersonBounds(landmarks, PLACEMENT_VISIBILITY_THRESHOLD) ??
+      getPersonBounds(landmarks, 0)
+    );
   }
 
   function drawPose(landmarks: PoseLandmark[]) {
@@ -387,7 +408,10 @@ export function useDanceDetectionAr({
     }
 
     if (motion > DANCE_MOTION_THRESHOLD) {
-      activeSamples += 1;
+      activeSamples = Math.min(
+        activeSamples + 1,
+        DANCE_ACTIVE_SAMPLE_TARGET + 4
+      );
     } else {
       activeSamples = Math.max(0, activeSamples - 1);
     }
@@ -400,16 +424,26 @@ export function useDanceDetectionAr({
       activeSamples >= DANCE_ACTIVE_SAMPLE_TARGET &&
       average > DANCE_AVERAGE_THRESHOLD;
 
-    const bounds = getPersonBounds(landmarks);
-    if (bounds && dancing) {
-      updateBearPlacements(bounds);
-    } else {
-      bearPlacements.value = [];
+    const now = Date.now();
+    const currentBounds = resolvePersonBounds(landmarks);
+
+    if (currentBounds) {
+      lastPersonBounds = currentBounds;
     }
 
+    const bounds = currentBounds ?? lastPersonBounds;
+
     if (dancing) {
+      bearsVisibleUntil = now + BEAR_HOLD_MS;
+    }
+
+    const showBears = Boolean(bounds) && (dancing || now < bearsVisibleUntil);
+
+    if (showBears && bounds) {
+      updateBearPlacements(bounds);
       setStatus(i18n.global.t("dance.state.dancing"), "active");
     } else {
+      bearPlacements.value = [];
       setStatus(
         i18n.global.t("dance.state.energy", {
           score: formatEnergyScore(average),
@@ -417,12 +451,12 @@ export function useDanceDetectionAr({
       );
     }
 
-    if (dancing && !isDancing.value && Date.now() >= cooldownUntil) {
+    if (showBears && !isDancing.value && now >= cooldownUntil) {
       showPopup();
-      cooldownUntil = Date.now() + 3000;
+      cooldownUntil = now + 3000;
     }
 
-    isDancing.value = dancing;
+    isDancing.value = showBears;
   }
 
   async function runLoop() {
@@ -502,8 +536,8 @@ export function useDanceDetectionAr({
         modelComplexity: 1,
         smoothLandmarks: true,
         enableSegmentation: false,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.6,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
       });
       poseInstance.onResults(onResults);
 
