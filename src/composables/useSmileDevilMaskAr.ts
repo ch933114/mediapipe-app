@@ -5,6 +5,10 @@ import {
   type DevilFaceWarp,
   type NormalizedLandmark,
 } from "@/utils/devilFaceWarp";
+import {
+  clearSharedMediaPipeWasm,
+  enqueueMediaPipeWork,
+} from "@/utils/mediaPipeRuntime";
 import { requestRearCameraStream } from "@/utils/requestRearCameraStream";
 
 type UseSmileDevilMaskArOptions = {
@@ -105,6 +109,7 @@ export function useSmileDevilMaskAr({
 
   let faceMeshInstance: FaceMeshInstance | null = null;
   let mediaStream: MediaStream | null = null;
+  let sessionToken = 0;
   let detectFrameId = 0;
   let renderFrameId = 0;
   let faceWarp: DevilFaceWarp | null = null;
@@ -233,23 +238,38 @@ export function useSmileDevilMaskAr({
     }
     if (faceMeshInstance?.close) await faceMeshInstance.close();
     faceMeshInstance = null;
-    faceWarp?.clear();
+    faceWarp?.destroy();
+    faceWarp = null;
+    hasFaceWarp.value = false;
     resetTrackingState();
+    clearSharedMediaPipeWasm();
   }
 
-  async function start() {
+  async function startSession(token: number) {
     const video = videoElement.value;
     const faceMeshWindow = window as FaceMeshWindow;
-    if (!video || isRunning.value || isStarting.value) return;
-    isStarting.value = true;
-    overlayMessage.value = i18n.global.t("smile.state.cameraLoading");
-    setStatus(i18n.global.t("smile.state.booting"));
+
+    if (!video || token !== sessionToken) return;
 
     try {
       mediaStream = await requestRearCameraStream();
+      if (token !== sessionToken || !videoElement.value) {
+        await teardownSession();
+        return;
+      }
+
       video.srcObject = mediaStream;
       await video.play();
+      if (token !== sessionToken) {
+        await teardownSession();
+        return;
+      }
+
       await loadFaceMeshScript();
+      if (token !== sessionToken) {
+        await teardownSession();
+        return;
+      }
       if (!faceMeshWindow.FaceMesh)
         throw new Error(i18n.global.t("smile.state.loadError"));
       faceMeshInstance = new faceMeshWindow.FaceMesh({
@@ -279,22 +299,41 @@ export function useSmileDevilMaskAr({
         message,
       });
       setStatus(i18n.global.t("smile.state.loadError"), "error");
+    }
+  }
+
+  async function start() {
+    if (!videoElement.value || isRunning.value || isStarting.value) return;
+
+    const token = ++sessionToken;
+
+    isStarting.value = true;
+    overlayMessage.value = i18n.global.t("smile.state.cameraLoading");
+    setStatus(i18n.global.t("smile.state.booting"));
+
+    try {
+      await enqueueMediaPipeWork(async () => {
+        if (token !== sessionToken) return;
+
+        await startSession(token);
+      });
     } finally {
       isStarting.value = false;
     }
   }
 
   async function stop() {
-    await teardownSession();
-    overlayMessage.value = i18n.global.t("smile.state.cameraPrompt");
-    setStatus(i18n.global.t("smile.state.idle"));
+    sessionToken += 1;
+
+    await enqueueMediaPipeWork(async () => {
+      await teardownSession();
+      overlayMessage.value = i18n.global.t("smile.state.cameraPrompt");
+      setStatus(i18n.global.t("smile.state.idle"));
+    });
   }
 
   onBeforeUnmount(() => {
     void stop();
-    faceWarp?.destroy();
-    faceWarp = null;
-    hasFaceWarp.value = false;
   });
 
   return {

@@ -5,6 +5,10 @@ import type {
 } from "@mediapipe/hands";
 import type { CSSProperties, Ref } from "vue";
 import { i18n } from "@/i18n";
+import {
+  clearSharedMediaPipeWasm,
+  enqueueMediaPipeWork,
+} from "@/utils/mediaPipeRuntime";
 import { requestRearCameraStream } from "@/utils/requestRearCameraStream";
 
 type HandPhase = "idle" | "fisting" | "ready" | "showing";
@@ -164,6 +168,7 @@ export function useGestureGemAr({
   let handsInstance: HandsClass | null = null;
   let loopFrameId = 0;
   let mediaStream: MediaStream | null = null;
+  let sessionToken = 0;
   let handState = createInitialHandState();
 
   function setStatus(text: string, tone: "idle" | "active" | "error" = "idle") {
@@ -386,24 +391,31 @@ export function useGestureGemAr({
     handsInstance = null;
 
     resetInteractionState();
+    clearSharedMediaPipeWasm();
   }
 
-  async function start() {
+  async function startSession(token: number) {
     const video = videoElement.value;
     const handsWindow = window as HandsWindow;
 
-    if (!video || isRunning.value || isStarting.value) return;
-
-    isStarting.value = true;
-    overlayMessage.value = i18n.global.t("gesture.state.cameraLoading");
-    setStatus(i18n.global.t("gesture.state.booting"));
+    if (!video || token !== sessionToken) return;
 
     try {
       await loadHandsScript();
+      if (token !== sessionToken || !videoElement.value) return;
+
       mediaStream = await requestRearCameraStream();
+      if (token !== sessionToken || !videoElement.value) {
+        await teardownSession();
+        return;
+      }
 
       video.srcObject = mediaStream;
       await video.play();
+      if (token !== sessionToken) {
+        await teardownSession();
+        return;
+      }
 
       if (!handsWindow.Hands) {
         throw new Error(i18n.global.t("gesture.state.loadError"));
@@ -431,15 +443,37 @@ export function useGestureGemAr({
         message: getErrorMessage(error),
       });
       setStatus(i18n.global.t("gesture.state.loadError"), "error");
+    }
+  }
+
+  async function start() {
+    if (!videoElement.value || isRunning.value || isStarting.value) return;
+
+    const token = ++sessionToken;
+
+    isStarting.value = true;
+    overlayMessage.value = i18n.global.t("gesture.state.cameraLoading");
+    setStatus(i18n.global.t("gesture.state.booting"));
+
+    try {
+      await enqueueMediaPipeWork(async () => {
+        if (token !== sessionToken) return;
+
+        await startSession(token);
+      });
     } finally {
       isStarting.value = false;
     }
   }
 
   async function stop() {
-    await teardownSession();
-    overlayMessage.value = i18n.global.t("gesture.state.cameraPrompt");
-    setStatus(i18n.global.t("gesture.state.idle"));
+    sessionToken += 1;
+
+    await enqueueMediaPipeWork(async () => {
+      await teardownSession();
+      overlayMessage.value = i18n.global.t("gesture.state.cameraPrompt");
+      setStatus(i18n.global.t("gesture.state.idle"));
+    });
   }
 
   onBeforeUnmount(() => {

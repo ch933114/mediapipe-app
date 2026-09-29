@@ -632,6 +632,7 @@ export function createDevilFaceWarp(
     gl.deleteBuffer(indexBuffer);
     gl.deleteTexture(texture);
     gl.deleteProgram(program);
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 
   restoreState();

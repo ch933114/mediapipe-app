@@ -1,6 +1,10 @@
 import type { CSSProperties, Ref } from "vue";
 import dancingBearImage from "@/assets/images/dancingbear.gif";
 import { i18n } from "@/i18n";
+import {
+  clearSharedMediaPipeWasm,
+  enqueueMediaPipeWork,
+} from "@/utils/mediaPipeRuntime";
 import { requestRearCameraStream } from "@/utils/requestRearCameraStream";
 
 type UseDanceDetectionArOptions = {
@@ -188,6 +192,7 @@ export function useDanceDetectionAr({
 
   let poseInstance: PoseInstance | null = null;
   let mediaStream: MediaStream | null = null;
+  let sessionToken = 0;
   let loopFrameId = 0;
   let popupTimer = 0;
   let activeSamples = 0;
@@ -504,25 +509,31 @@ export function useDanceDetectionAr({
     poseInstance = null;
 
     resetTrackingState();
+    clearSharedMediaPipeWasm();
   }
 
-  async function start() {
+  async function startSession(token: number) {
     const video = videoElement.value;
     const poseWindow = window as PoseWindow;
 
-    if (!video || isRunning.value || isStarting.value) return;
-
-    isStarting.value = true;
-    overlayMessage.value = i18n.global.t("dance.state.cameraLoading");
-    setStatus(i18n.global.t("dance.state.booting"));
+    if (!video || token !== sessionToken) return;
 
     try {
       await loadPoseScript();
+      if (token !== sessionToken || !videoElement.value) return;
 
       mediaStream = await requestRearCameraStream();
+      if (token !== sessionToken || !videoElement.value) {
+        await teardownSession();
+        return;
+      }
 
       video.srcObject = mediaStream;
       await video.play();
+      if (token !== sessionToken) {
+        await teardownSession();
+        return;
+      }
 
       if (!poseWindow.Pose) {
         throw new Error(i18n.global.t("dance.state.loadError"));
@@ -552,15 +563,37 @@ export function useDanceDetectionAr({
         message: getErrorMessage(error),
       });
       setStatus(i18n.global.t("dance.state.loadError"), "error");
+    }
+  }
+
+  async function start() {
+    if (!videoElement.value || isRunning.value || isStarting.value) return;
+
+    const token = ++sessionToken;
+
+    isStarting.value = true;
+    overlayMessage.value = i18n.global.t("dance.state.cameraLoading");
+    setStatus(i18n.global.t("dance.state.booting"));
+
+    try {
+      await enqueueMediaPipeWork(async () => {
+        if (token !== sessionToken) return;
+
+        await startSession(token);
+      });
     } finally {
       isStarting.value = false;
     }
   }
 
   async function stop() {
-    await teardownSession();
-    overlayMessage.value = i18n.global.t("dance.state.cameraPrompt");
-    setStatus(i18n.global.t("dance.state.idle"));
+    sessionToken += 1;
+
+    await enqueueMediaPipeWork(async () => {
+      await teardownSession();
+      overlayMessage.value = i18n.global.t("dance.state.cameraPrompt");
+      setStatus(i18n.global.t("dance.state.idle"));
+    });
   }
 
   onBeforeUnmount(() => {

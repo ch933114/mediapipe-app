@@ -1,5 +1,9 @@
 import eeveeReferenceImage from "@/assets/images/eevee.png";
 import { i18n } from "@/i18n";
+import {
+  clearSharedMediaPipeWasm,
+  enqueueMediaPipeWork,
+} from "@/utils/mediaPipeRuntime";
 import { requestRearCameraStream } from "@/utils/requestRearCameraStream";
 import type { Ref } from "vue";
 
@@ -113,18 +117,24 @@ function getCosineSimilarity(left: number[], right: number[]) {
 }
 
 async function loadEmbedderModule() {
-  const tasksVisionModule = (await import(
-    /* @vite-ignore */ TASKS_VISION_MODULE_URL
-  )) as unknown as MediaPipeTasksVisionModule;
-  const visionTaskFileset =
-    await tasksVisionModule.FilesetResolver.forVisionTasks(
-      TASKS_VISION_WASM_ROOT
-    );
+  return enqueueMediaPipeWork(async () => {
+    clearSharedMediaPipeWasm();
 
-  return tasksVisionModule.ImageEmbedder.createFromModelPath(
-    visionTaskFileset,
-    IMAGE_EMBEDDER_MODEL_URL
-  );
+    const tasksVisionModule = (await import(
+      /* @vite-ignore */ TASKS_VISION_MODULE_URL
+    )) as unknown as MediaPipeTasksVisionModule;
+    const visionTaskFileset =
+      await tasksVisionModule.FilesetResolver.forVisionTasks(
+        TASKS_VISION_WASM_ROOT
+      );
+
+    clearSharedMediaPipeWasm();
+
+    return tasksVisionModule.ImageEmbedder.createFromModelPath(
+      visionTaskFileset,
+      IMAGE_EMBEDDER_MODEL_URL
+    );
+  });
 }
 
 async function ensureImageEmbedder() {
@@ -241,6 +251,7 @@ export function useEeveeDetectionAr({
   let detectStreak = 0;
   let lostStreak = 0;
   let sessionGeneration = 0;
+  let isDisposed = false;
   let trackedSamplePoint: SamplePoint | null = null;
 
   function setStatus(text: string, tone: "idle" | "active" | "error" = "idle") {
@@ -259,11 +270,20 @@ export function useEeveeDetectionAr({
 
   async function ensureReferenceEmbeddings(
     context: CanvasRenderingContext2D
-  ): Promise<number[][]> {
+  ): Promise<number[][] | null> {
+    if (isDisposed) return null;
     if (referenceEmbeddings) return referenceEmbeddings;
 
     const referenceImage = await loadReferenceImage();
+    if (isDisposed) return null;
+
     const loadedEmbedder = await ensureImageEmbedder();
+    if (isDisposed) {
+      loadedEmbedder.close?.();
+      embedderLoaderPromise = null;
+      return null;
+    }
+
     const embeddings = REFERENCE_SCALES.flatMap((scale) => {
       drawReferenceImage(context, referenceImage, scale);
 
@@ -333,6 +353,7 @@ export function useEeveeDetectionAr({
     canvas.height = EMBEDDER_CANVAS_SIZE;
 
     const loadedReferenceEmbeddings = await ensureReferenceEmbeddings(context);
+    if (!loadedReferenceEmbeddings) return;
     if (generation !== sessionGeneration || !isRunning.value) return;
 
     const loadedEmbedder = embedder ?? (await ensureImageEmbedder());
@@ -511,7 +532,16 @@ export function useEeveeDetectionAr({
       canvas.height = EMBEDDER_CANVAS_SIZE;
 
       await ensureReferenceEmbeddings(context);
+      if (isDisposed) {
+        await teardownSession();
+        return;
+      }
+
       mediaStream = await requestRearCameraStream();
+      if (isDisposed) {
+        await teardownSession();
+        return;
+      }
 
       video.srcObject = mediaStream;
       await video.play();
@@ -539,10 +569,14 @@ export function useEeveeDetectionAr({
   }
 
   onBeforeUnmount(() => {
+    isDisposed = true;
     embedder?.close?.();
     embedder = null;
     referenceEmbeddings = null;
     embedderLoaderPromise = null;
+    void enqueueMediaPipeWork(async () => {
+      clearSharedMediaPipeWasm();
+    });
     void stop();
   });
 
