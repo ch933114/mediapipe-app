@@ -1,11 +1,16 @@
+import type { Ref } from "vue";
+import {
+  ImageEmbedder,
+  type ImageEmbedderResult,
+} from "@mediapipe/tasks-vision";
 import eeveeReferenceImage from "@/assets/images/eevee.png";
 import { i18n } from "@/i18n";
+import { enqueueMediaPipeWork } from "@/utils/mediaPipeRuntime";
 import {
-  clearSharedMediaPipeWasm,
-  enqueueMediaPipeWork,
-} from "@/utils/mediaPipeRuntime";
+  IMAGE_EMBEDDER_MODEL_URL,
+  loadVisionFileset,
+} from "@/utils/mediaPipeVision";
 import { requestRearCameraStream } from "@/utils/requestRearCameraStream";
-import type { Ref } from "vue";
 
 type UseEeveeDetectionArOptions = {
   captureCanvasElement: Ref<HTMLCanvasElement | null>;
@@ -29,37 +34,6 @@ type DetectionSample = DetectionBounds &
   SamplePoint & {
     score: number;
   };
-
-type MediaPipeEmbedding = {
-  floatEmbedding?: number[] | Float32Array;
-};
-
-type MediaPipeEmbedResult = {
-  embeddings?: MediaPipeEmbedding[];
-};
-
-type MediaPipeImageEmbedder = {
-  close?: () => void;
-  embed: (imageSource: CanvasImageSource) => MediaPipeEmbedResult;
-};
-
-type MediaPipeTasksVisionModule = {
-  FilesetResolver: {
-    forVisionTasks: (wasmRoot: string) => Promise<unknown>;
-  };
-  ImageEmbedder: {
-    createFromModelPath: (
-      visionTaskFileset: unknown,
-      modelAssetPath: string
-    ) => Promise<MediaPipeImageEmbedder>;
-  };
-};
-
-const TASKS_VISION_VERSION = "1.0.1";
-const TASKS_VISION_MODULE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VISION_VERSION}/+esm`;
-const TASKS_VISION_WASM_ROOT = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VISION_VERSION}/wasm`;
-const IMAGE_EMBEDDER_MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_small/float32/1/mobilenet_v3_small.tflite";
 
 const ANALYZE_INTERVAL_MS = 320;
 const DETECTED_ANALYZE_INTERVAL_MS = 1600;
@@ -87,12 +61,8 @@ function getErrorMessage(error: unknown) {
   return i18n.global.t("eevee.state.loadError");
 }
 
-function getEmbeddingVector(result: MediaPipeEmbedResult) {
-  const vector = result.embeddings?.[0]?.floatEmbedding;
-
-  if (!vector) return null;
-
-  return Array.isArray(vector) ? vector : Array.from(vector);
+function getEmbeddingVector(result: ImageEmbedderResult) {
+  return result.embeddings[0]?.floatEmbedding ?? null;
 }
 
 function getCosineSimilarity(left: number[], right: number[]) {
@@ -118,22 +88,14 @@ function getCosineSimilarity(left: number[], right: number[]) {
 
 async function loadEmbedderModule() {
   return enqueueMediaPipeWork(async () => {
-    clearSharedMediaPipeWasm();
+    const visionFileset = await loadVisionFileset();
 
-    const tasksVisionModule = (await import(
-      /* @vite-ignore */ TASKS_VISION_MODULE_URL
-    )) as unknown as MediaPipeTasksVisionModule;
-    const visionTaskFileset =
-      await tasksVisionModule.FilesetResolver.forVisionTasks(
-        TASKS_VISION_WASM_ROOT
-      );
-
-    clearSharedMediaPipeWasm();
-
-    return tasksVisionModule.ImageEmbedder.createFromModelPath(
-      visionTaskFileset,
-      IMAGE_EMBEDDER_MODEL_URL
-    );
+    return ImageEmbedder.createFromOptions(visionFileset, {
+      baseOptions: {
+        modelAssetPath: IMAGE_EMBEDDER_MODEL_URL,
+      },
+      runningMode: "IMAGE",
+    });
   });
 }
 
@@ -246,7 +208,7 @@ export function useEeveeDetectionAr({
 
   let mediaStream: MediaStream | null = null;
   let loopTimerId = 0;
-  let embedder: MediaPipeImageEmbedder | null = null;
+  let embedder: ImageEmbedder | null = null;
   let referenceEmbeddings: number[][] | null = null;
   let detectStreak = 0;
   let lostStreak = 0;
@@ -279,7 +241,7 @@ export function useEeveeDetectionAr({
 
     const loadedEmbedder = await ensureImageEmbedder();
     if (isDisposed) {
-      loadedEmbedder.close?.();
+      loadedEmbedder.close();
       embedderLoaderPromise = null;
       return null;
     }
@@ -570,13 +532,10 @@ export function useEeveeDetectionAr({
 
   onBeforeUnmount(() => {
     isDisposed = true;
-    embedder?.close?.();
+    embedder?.close();
     embedder = null;
     referenceEmbeddings = null;
     embedderLoaderPromise = null;
-    void enqueueMediaPipeWork(async () => {
-      clearSharedMediaPipeWasm();
-    });
     void stop();
   });
 

@@ -1,10 +1,18 @@
 import type { CSSProperties, Ref } from "vue";
+import {
+  PoseLandmarker,
+  type NormalizedLandmark,
+} from "@mediapipe/tasks-vision";
 import dancingBearImage from "@/assets/images/dancingbear.gif";
 import { i18n } from "@/i18n";
+import { enqueueMediaPipeWork } from "@/utils/mediaPipeRuntime";
 import {
-  clearSharedMediaPipeWasm,
-  enqueueMediaPipeWork,
-} from "@/utils/mediaPipeRuntime";
+  createVideoTimestamp,
+  createVisionTask,
+  loadVisionFileset,
+  POSE_LANDMARKER_MODEL_URL,
+  releaseVisionCanvas,
+} from "@/utils/mediaPipeVision";
 import { requestRearCameraStream } from "@/utils/requestRearCameraStream";
 
 type UseDanceDetectionArOptions = {
@@ -12,32 +20,6 @@ type UseDanceDetectionArOptions = {
   videoElement: Ref<HTMLVideoElement | null>;
   canvasElement: Ref<HTMLCanvasElement | null>;
 };
-
-type PoseLandmark = {
-  x: number;
-  y: number;
-  visibility?: number;
-};
-
-type PoseResults = {
-  poseLandmarks?: PoseLandmark[];
-};
-
-type PoseInstance = {
-  close?: () => Promise<void> | void;
-  onResults: (callback: (results: PoseResults) => void) => void;
-  send: (input: { image: HTMLVideoElement }) => Promise<void>;
-  setOptions: (options: Record<string, unknown>) => void;
-};
-
-type PoseConstructor = new (config: {
-  locateFile: (file: string) => string;
-}) => PoseInstance;
-
-type PoseWindow = Window &
-  typeof globalThis & {
-    Pose?: PoseConstructor;
-  };
 
 type PersonBounds = {
   maxX: number;
@@ -68,7 +50,6 @@ const CONNECTIONS = [
   [24, 26],
   [26, 28],
 ] as const;
-const POSE_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js";
 const VISIBILITY_THRESHOLD = 0.5;
 const PLACEMENT_VISIBILITY_THRESHOLD = 0.15;
 const DANCE_MOTION_THRESHOLD = 0.012;
@@ -77,8 +58,6 @@ const DANCE_SAMPLE_WINDOW = 18;
 const DANCE_MIN_SAMPLE_COUNT = 8;
 const DANCE_ACTIVE_SAMPLE_TARGET = 5;
 const BEAR_HOLD_MS = 900;
-
-let poseScriptLoader: Promise<void> | null = null;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -90,51 +69,7 @@ function getErrorMessage(error: unknown) {
   return i18n.global.t("dance.state.loadError");
 }
 
-function loadPoseScript() {
-  const poseWindow = window as PoseWindow;
-
-  if (poseWindow.Pose) {
-    return Promise.resolve();
-  }
-
-  if (poseScriptLoader) {
-    return poseScriptLoader;
-  }
-
-  poseScriptLoader = new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      `script[src="${POSE_SCRIPT_URL}"]`
-    );
-
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener(
-        "error",
-        () => reject(new Error(i18n.global.t("dance.state.loadError"))),
-        { once: true }
-      );
-      return;
-    }
-
-    // Load MediaPipe Pose from CDN / 從 CDN 載入姿態模型腳本
-    const scriptElement = document.createElement("script");
-
-    scriptElement.src = POSE_SCRIPT_URL;
-    scriptElement.async = true;
-    scriptElement.crossOrigin = "anonymous";
-    scriptElement.addEventListener("load", () => resolve(), { once: true });
-    scriptElement.addEventListener(
-      "error",
-      () => reject(new Error(i18n.global.t("dance.state.loadError"))),
-      { once: true }
-    );
-    document.head.appendChild(scriptElement);
-  });
-
-  return poseScriptLoader;
-}
-
-function getVisiblePoint(landmarks: PoseLandmark[], index: number) {
+function getVisiblePoint(landmarks: NormalizedLandmark[], index: number) {
   const point = landmarks[index];
   if (!point) return null;
   if ((point.visibility ?? 0) < VISIBILITY_THRESHOLD) return null;
@@ -143,7 +78,7 @@ function getVisiblePoint(landmarks: PoseLandmark[], index: number) {
 }
 
 function getPersonBounds(
-  landmarks: PoseLandmark[],
+  landmarks: NormalizedLandmark[],
   minVisibility = VISIBILITY_THRESHOLD
 ) {
   const visiblePoints = landmarks.filter(
@@ -190,7 +125,9 @@ export function useDanceDetectionAr({
   const popupVisible = ref(false);
   const popupText = ref(i18n.global.t("dance.popup"));
 
-  let poseInstance: PoseInstance | null = null;
+  const nextVideoTimestamp = createVideoTimestamp();
+  let poseLandmarker: PoseLandmarker | null = null;
+  let visionCanvas: HTMLCanvasElement | null = null;
   let mediaStream: MediaStream | null = null;
   let sessionToken = 0;
   let loopFrameId = 0;
@@ -237,7 +174,7 @@ export function useDanceDetectionAr({
   }
 
   // Bear anchor bounds / 小熊定位範圍
-  function resolvePersonBounds(landmarks: PoseLandmark[]) {
+  function resolvePersonBounds(landmarks: NormalizedLandmark[]) {
     return (
       getPersonBounds(landmarks) ??
       getPersonBounds(landmarks, PLACEMENT_VISIBILITY_THRESHOLD) ??
@@ -245,7 +182,7 @@ export function useDanceDetectionAr({
     );
   }
 
-  function drawPose(landmarks: PoseLandmark[]) {
+  function drawPose(landmarks: NormalizedLandmark[]) {
     const video = videoElement.value;
     const canvas = canvasElement.value;
     const context = canvas?.getContext("2d");
@@ -289,7 +226,7 @@ export function useDanceDetectionAr({
     });
   }
 
-  function averageMotion(landmarks: PoseLandmark[]) {
+  function averageMotion(landmarks: NormalizedLandmark[]) {
     if (!previousPose) {
       previousPose = TRACKED_POINTS.map((index) => {
         const point = getVisiblePoint(landmarks, index);
@@ -390,12 +327,11 @@ export function useDanceDetectionAr({
     ];
   }
 
-  function onResults(results: PoseResults) {
-    const landmarks = results.poseLandmarks;
+  function onResults(landmarks: NormalizedLandmark[] | undefined) {
     const canvas = canvasElement.value;
     const context = canvas?.getContext("2d");
 
-    if (!landmarks) {
+    if (!landmarks?.length) {
       if (canvas && context) {
         context.clearRect(0, 0, canvas.width, canvas.height);
       }
@@ -464,18 +400,22 @@ export function useDanceDetectionAr({
     isDancing.value = showBears;
   }
 
-  async function runLoop() {
+  function runLoop() {
     const video = videoElement.value;
 
-    if (!isRunning.value || !poseInstance || !video) return;
+    if (!isRunning.value || !poseLandmarker || !video) return;
 
-    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      await poseInstance.send({ image: video });
+    if (
+      video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      video.videoWidth > 0
+    ) {
+      const result = poseLandmarker.detectForVideo(video, nextVideoTimestamp());
+      const landmarks = result.landmarks[0];
+
+      onResults(landmarks?.length ? landmarks : undefined);
     }
 
-    loopFrameId = window.requestAnimationFrame(() => {
-      void runLoop();
-    });
+    loopFrameId = window.requestAnimationFrame(runLoop);
   }
 
   async function teardownSession() {
@@ -503,25 +443,20 @@ export function useDanceDetectionAr({
       context.clearRect(0, 0, canvas.width, canvas.height);
     }
 
-    if (poseInstance?.close) {
-      await poseInstance.close();
-    }
-    poseInstance = null;
+    poseLandmarker?.close();
+    poseLandmarker = null;
+    releaseVisionCanvas(visionCanvas);
+    visionCanvas = null;
 
     resetTrackingState();
-    clearSharedMediaPipeWasm();
   }
 
   async function startSession(token: number) {
     const video = videoElement.value;
-    const poseWindow = window as PoseWindow;
 
     if (!video || token !== sessionToken) return;
 
     try {
-      await loadPoseScript();
-      if (token !== sessionToken || !videoElement.value) return;
-
       mediaStream = await requestRearCameraStream();
       if (token !== sessionToken || !videoElement.value) {
         await teardownSession();
@@ -535,28 +470,41 @@ export function useDanceDetectionAr({
         return;
       }
 
-      if (!poseWindow.Pose) {
-        throw new Error(i18n.global.t("dance.state.loadError"));
+      const visionFileset = await loadVisionFileset();
+      if (token !== sessionToken) {
+        await teardownSession();
+        return;
       }
 
-      poseInstance = new poseWindow.Pose({
-        locateFile: (file) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
-      });
-      poseInstance.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        enableSegmentation: false,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-      });
-      poseInstance.onResults(onResults);
+      const visionTask = await createVisionTask((backend) =>
+        PoseLandmarker.createFromOptions(visionFileset, {
+          baseOptions: {
+            modelAssetPath: POSE_LANDMARKER_MODEL_URL,
+            delegate: backend.delegate,
+          },
+          canvas: backend.canvas,
+          runningMode: "VIDEO",
+          numPoses: 1,
+          minPoseDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+          outputSegmentationMasks: false,
+        })
+      );
+      if (token !== sessionToken) {
+        visionTask.task.close();
+        releaseVisionCanvas(visionTask.canvas);
+        await teardownSession();
+        return;
+      }
+
+      poseLandmarker = visionTask.task;
+      visionCanvas = visionTask.canvas;
 
       resetTrackingState();
       isRunning.value = true;
       overlayMessage.value = "";
       setStatus(i18n.global.t("dance.state.tracking"));
-      await runLoop();
+      runLoop();
     } catch (error) {
       await teardownSession();
       overlayMessage.value = i18n.global.t("dance.state.cameraError", {

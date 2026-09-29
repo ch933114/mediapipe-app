@@ -1,14 +1,17 @@
-import type {
-  Hands as HandsClass,
-  NormalizedLandmark,
-  Results as HandsResults,
-} from "@mediapipe/hands";
 import type { CSSProperties, Ref } from "vue";
-import { i18n } from "@/i18n";
 import {
-  clearSharedMediaPipeWasm,
-  enqueueMediaPipeWork,
-} from "@/utils/mediaPipeRuntime";
+  HandLandmarker,
+  type NormalizedLandmark,
+} from "@mediapipe/tasks-vision";
+import { i18n } from "@/i18n";
+import { enqueueMediaPipeWork } from "@/utils/mediaPipeRuntime";
+import {
+  createVideoTimestamp,
+  createVisionTask,
+  HAND_LANDMARKER_MODEL_URL,
+  loadVisionFileset,
+  releaseVisionCanvas,
+} from "@/utils/mediaPipeVision";
 import { requestRearCameraStream } from "@/utils/requestRearCameraStream";
 
 type HandPhase = "idle" | "fisting" | "ready" | "showing";
@@ -17,11 +20,6 @@ type UseGestureGemArOptions = {
   stageElement: Ref<HTMLElement | null>;
   videoElement: Ref<HTMLVideoElement | null>;
 };
-
-type HandsWindow = Window &
-  typeof globalThis & {
-    Hands?: typeof HandsClass;
-  };
 
 type HandTrackingState = {
   fistMissSince: number;
@@ -39,45 +37,6 @@ const FIST_MISS_GRACE_MS = 400;
 const READY_TIMEOUT_MS = 3000;
 const GEM_SCALE_MIN = 0.9;
 const GEM_SCALE_MAX = 1.8;
-const HANDS_VERSION = "0.4.1675469240";
-const HANDS_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${HANDS_VERSION}/hands.js`;
-const HANDS_ASSET_BASE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${HANDS_VERSION}/`;
-let handsScriptLoader: Promise<void> | null = null;
-
-function loadHandsScript() {
-  const handsWindow = window as HandsWindow;
-  if (handsWindow.Hands) return Promise.resolve();
-  if (handsScriptLoader) return handsScriptLoader;
-
-  handsScriptLoader = new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      `script[src="${HANDS_SCRIPT_URL}"]`
-    );
-    const handleLoad = () => resolve();
-    const handleError = () =>
-      reject(new Error(i18n.global.t("gesture.state.loadError")));
-
-    if (existingScript) {
-      existingScript.addEventListener("load", handleLoad, { once: true });
-      existingScript.addEventListener("error", handleError, { once: true });
-      return;
-    }
-
-    const scriptElement = document.createElement("script");
-    scriptElement.src = HANDS_SCRIPT_URL;
-    scriptElement.async = true;
-    scriptElement.crossOrigin = "anonymous";
-    scriptElement.addEventListener("load", handleLoad, { once: true });
-    scriptElement.addEventListener("error", handleError, { once: true });
-    document.head.appendChild(scriptElement);
-  }).catch((error: unknown) => {
-    handsScriptLoader = null;
-    throw error;
-  });
-
-  return handsScriptLoader;
-}
-
 function createInitialHandState(): HandTrackingState {
   return {
     fistMissSince: 0,
@@ -165,7 +124,9 @@ export function useGestureGemAr({
     transform: "translate(-50%, -50%) scale(1)",
   });
 
-  let handsInstance: HandsClass | null = null;
+  const nextVideoTimestamp = createVideoTimestamp();
+  let handLandmarker: HandLandmarker | null = null;
+  let visionCanvas: HTMLCanvasElement | null = null;
   let loopFrameId = 0;
   let mediaStream: MediaStream | null = null;
   let sessionToken = 0;
@@ -262,11 +223,10 @@ export function useGestureGemAr({
     isOpenHintActive.value = true;
   }
 
-  function onResults(results: HandsResults) {
+  function onResults(landmarks: NormalizedLandmark[] | undefined) {
     const now = Date.now();
-    const landmarks = results.multiHandLandmarks?.[0];
 
-    if (!landmarks) {
+    if (!landmarks?.length) {
       if (handState.phase === "idle") {
         setStatus(i18n.global.t("gesture.state.idle"), "idle");
         return;
@@ -352,18 +312,21 @@ export function useGestureGemAr({
     updateHintForPhase(now);
   }
 
-  async function runLoop() {
+  function runLoop() {
     const video = videoElement.value;
 
-    if (!isRunning.value || !handsInstance || !video) return;
+    if (!isRunning.value || !handLandmarker || !video) return;
 
-    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      await handsInstance.send({ image: video });
+    if (
+      video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      video.videoWidth > 0
+    ) {
+      const result = handLandmarker.detectForVideo(video, nextVideoTimestamp());
+
+      onResults(result.landmarks[0]);
     }
 
-    loopFrameId = window.requestAnimationFrame(() => {
-      void runLoop();
-    });
+    loopFrameId = window.requestAnimationFrame(runLoop);
   }
 
   async function teardownSession() {
@@ -385,25 +348,20 @@ export function useGestureGemAr({
       video.srcObject = null;
     }
 
-    if (handsInstance?.close) {
-      await handsInstance.close();
-    }
-    handsInstance = null;
+    handLandmarker?.close();
+    handLandmarker = null;
+    releaseVisionCanvas(visionCanvas);
+    visionCanvas = null;
 
     resetInteractionState();
-    clearSharedMediaPipeWasm();
   }
 
   async function startSession(token: number) {
     const video = videoElement.value;
-    const handsWindow = window as HandsWindow;
 
     if (!video || token !== sessionToken) return;
 
     try {
-      await loadHandsScript();
-      if (token !== sessionToken || !videoElement.value) return;
-
       mediaStream = await requestRearCameraStream();
       if (token !== sessionToken || !videoElement.value) {
         await teardownSession();
@@ -417,26 +375,40 @@ export function useGestureGemAr({
         return;
       }
 
-      if (!handsWindow.Hands) {
-        throw new Error(i18n.global.t("gesture.state.loadError"));
+      const visionFileset = await loadVisionFileset();
+      if (token !== sessionToken) {
+        await teardownSession();
+        return;
       }
 
-      handsInstance = new handsWindow.Hands({
-        locateFile: (file) => `${HANDS_ASSET_BASE_URL}${file}`,
-      });
-      handsInstance.setOptions({
-        maxNumHands: 1,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.6,
-      });
-      handsInstance.onResults(onResults);
+      const visionTask = await createVisionTask((backend) =>
+        HandLandmarker.createFromOptions(visionFileset, {
+          baseOptions: {
+            modelAssetPath: HAND_LANDMARKER_MODEL_URL,
+            delegate: backend.delegate,
+          },
+          canvas: backend.canvas,
+          runningMode: "VIDEO",
+          numHands: 1,
+          minHandDetectionConfidence: 0.7,
+          minTrackingConfidence: 0.6,
+        })
+      );
+      if (token !== sessionToken) {
+        visionTask.task.close();
+        releaseVisionCanvas(visionTask.canvas);
+        await teardownSession();
+        return;
+      }
+
+      handLandmarker = visionTask.task;
+      visionCanvas = visionTask.canvas;
 
       resetInteractionState();
       isRunning.value = true;
       overlayMessage.value = "";
       setStatus(i18n.global.t("gesture.state.tracking"));
-      await runLoop();
+      runLoop();
     } catch (error) {
       await teardownSession();
       overlayMessage.value = i18n.global.t("gesture.state.cameraError", {

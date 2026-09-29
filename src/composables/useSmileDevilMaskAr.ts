@@ -1,14 +1,19 @@
 import type { Ref } from "vue";
+import { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { i18n } from "@/i18n";
 import {
   createDevilFaceWarp,
   type DevilFaceWarp,
   type NormalizedLandmark,
 } from "@/utils/devilFaceWarp";
+import { enqueueMediaPipeWork } from "@/utils/mediaPipeRuntime";
 import {
-  clearSharedMediaPipeWasm,
-  enqueueMediaPipeWork,
-} from "@/utils/mediaPipeRuntime";
+  createVideoTimestamp,
+  createVisionTask,
+  FACE_LANDMARKER_MODEL_URL,
+  loadVisionFileset,
+  releaseVisionCanvas,
+} from "@/utils/mediaPipeVision";
 import { requestRearCameraStream } from "@/utils/requestRearCameraStream";
 
 type UseSmileDevilMaskArOptions = {
@@ -17,25 +22,8 @@ type UseSmileDevilMaskArOptions = {
   canvasElement: Ref<HTMLCanvasElement | null>;
 };
 
-type FaceResults = { multiFaceLandmarks?: NormalizedLandmark[][] };
-type FaceMeshInstance = {
-  close?: () => Promise<void> | void;
-  onResults: (callback: (results: FaceResults) => void) => void;
-  send: (input: { image: HTMLVideoElement }) => Promise<void>;
-  setOptions: (options: Record<string, unknown>) => void;
-};
-type FaceMeshConstructor = new (config: {
-  locateFile: (file: string) => string;
-}) => FaceMeshInstance;
-type FaceMeshWindow = Window &
-  typeof globalThis & { FaceMesh?: FaceMeshConstructor };
-
 const MORPH_SCORE_START = 0.33;
 const MORPH_SCORE_END = 0.6;
-const FACE_MESH_VERSION = "0.4.1633559619";
-const FACE_MESH_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@${FACE_MESH_VERSION}/face_mesh.js`;
-const FACE_MESH_PATH = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@${FACE_MESH_VERSION}/`;
-let faceMeshScriptLoader: Promise<void> | null = null;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -62,37 +50,6 @@ function getMorphTarget(score: number) {
   );
 }
 
-function loadFaceMeshScript() {
-  const faceMeshWindow = window as FaceMeshWindow;
-  if (faceMeshWindow.FaceMesh) return Promise.resolve();
-  if (faceMeshScriptLoader) return faceMeshScriptLoader;
-
-  faceMeshScriptLoader = new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      `script[src="${FACE_MESH_SCRIPT_URL}"]`
-    );
-    const handleLoad = () => resolve();
-    const handleError = () =>
-      reject(new Error(i18n.global.t("smile.state.loadError")));
-
-    if (existingScript) {
-      existingScript.addEventListener("load", handleLoad, { once: true });
-      existingScript.addEventListener("error", handleError, { once: true });
-      return;
-    }
-
-    const scriptElement = document.createElement("script");
-    scriptElement.src = FACE_MESH_SCRIPT_URL;
-    scriptElement.async = true;
-    scriptElement.crossOrigin = "anonymous";
-    scriptElement.addEventListener("load", handleLoad, { once: true });
-    scriptElement.addEventListener("error", handleError, { once: true });
-    document.head.appendChild(scriptElement);
-  });
-
-  return faceMeshScriptLoader;
-}
-
 export function useSmileDevilMaskAr({
   stageElement,
   videoElement,
@@ -107,7 +64,9 @@ export function useSmileDevilMaskAr({
   const statusText = ref(i18n.global.t("smile.state.idle"));
   const statusTone = ref<"idle" | "active" | "error">("idle");
 
-  let faceMeshInstance: FaceMeshInstance | null = null;
+  const nextVideoTimestamp = createVideoTimestamp();
+  let faceLandmarker: FaceLandmarker | null = null;
+  let visionCanvas: HTMLCanvasElement | null = null;
   let mediaStream: MediaStream | null = null;
   let sessionToken = 0;
   let detectFrameId = 0;
@@ -148,9 +107,8 @@ export function useSmileDevilMaskAr({
     }
   }
 
-  function onResults(results: FaceResults) {
-    const landmarks = results.multiFaceLandmarks?.[0];
-    if (!landmarks) {
+  function onResults(landmarks: NormalizedLandmark[] | undefined) {
+    if (!landmarks?.length) {
       faceVisible = false;
       return;
     }
@@ -203,17 +161,33 @@ export function useSmileDevilMaskAr({
     renderFrameId = window.requestAnimationFrame(renderFrame);
   }
 
-  async function detectLoop() {
+  function detectLoop() {
     const video = videoElement.value;
-    if (!isRunning.value || !faceMeshInstance || !video) return;
+    if (!isRunning.value || !faceLandmarker || !video) return;
+
     try {
-      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA)
-        await faceMeshInstance.send({ image: video });
+      if (
+        video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+        video.videoWidth > 0
+      ) {
+        const result = faceLandmarker.detectForVideo(
+          video,
+          nextVideoTimestamp()
+        );
+        const landmarks = result.faceLandmarks[0];
+
+        onResults(
+          landmarks?.length
+            ? landmarks.map((point) => ({ x: point.x, y: point.y }))
+            : undefined
+        );
+      }
     } catch {
       if (!isRunning.value) return;
     }
+
     if (!isRunning.value) return;
-    detectFrameId = window.requestAnimationFrame(() => void detectLoop());
+    detectFrameId = window.requestAnimationFrame(detectLoop);
   }
 
   function ensureFaceWarp() {
@@ -236,18 +210,18 @@ export function useSmileDevilMaskAr({
       video.pause();
       video.srcObject = null;
     }
-    if (faceMeshInstance?.close) await faceMeshInstance.close();
-    faceMeshInstance = null;
+    faceLandmarker?.close();
+    faceLandmarker = null;
+    releaseVisionCanvas(visionCanvas);
+    visionCanvas = null;
     faceWarp?.destroy();
     faceWarp = null;
     hasFaceWarp.value = false;
     resetTrackingState();
-    clearSharedMediaPipeWasm();
   }
 
   async function startSession(token: number) {
     const video = videoElement.value;
-    const faceMeshWindow = window as FaceMeshWindow;
 
     if (!video || token !== sessionToken) return;
 
@@ -265,30 +239,42 @@ export function useSmileDevilMaskAr({
         return;
       }
 
-      await loadFaceMeshScript();
+      const visionFileset = await loadVisionFileset();
       if (token !== sessionToken) {
         await teardownSession();
         return;
       }
-      if (!faceMeshWindow.FaceMesh)
-        throw new Error(i18n.global.t("smile.state.loadError"));
-      faceMeshInstance = new faceMeshWindow.FaceMesh({
-        locateFile: (file) => `${FACE_MESH_PATH}${file}`,
-      });
-      faceMeshInstance.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: true,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.6,
-      });
-      faceMeshInstance.onResults(onResults);
+
+      const visionTask = await createVisionTask((backend) =>
+        FaceLandmarker.createFromOptions(visionFileset, {
+          baseOptions: {
+            modelAssetPath: FACE_LANDMARKER_MODEL_URL,
+            delegate: backend.delegate,
+          },
+          canvas: backend.canvas,
+          runningMode: "VIDEO",
+          numFaces: 1,
+          minFaceDetectionConfidence: 0.7,
+          minTrackingConfidence: 0.6,
+          outputFaceBlendshapes: false,
+        })
+      );
+      if (token !== sessionToken) {
+        visionTask.task.close();
+        releaseVisionCanvas(visionTask.canvas);
+        await teardownSession();
+        return;
+      }
+
+      faceLandmarker = visionTask.task;
+      visionCanvas = visionTask.canvas;
       ensureFaceWarp();
       resetTrackingState();
       isRunning.value = true;
       overlayMessage.value = "";
       setStatus(i18n.global.t("smile.state.tracking"));
       renderFrameId = window.requestAnimationFrame(renderFrame);
-      await detectLoop();
+      detectLoop();
     } catch (error) {
       await teardownSession();
       const message =
